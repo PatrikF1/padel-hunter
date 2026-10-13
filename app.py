@@ -104,9 +104,10 @@ async def refresh_catalog():
 # ---- mobitel ----
 @app.get("/api/mobile")
 def mobile(request: Request):
-    """Adresa i QR kod za mobitel - samo za računalo na kojem app radi."""
-    if not access.is_local(request.client.host if request.client else None):
-        raise HTTPException(403, "samo s računala")
+    """Adresa i QR kod za mobitel - samo za pouzdane uređaje (računalo/server ili tvoja Tailscale mreža),
+    jer adresa za kućnu mrežu sadrži tajni ključ."""
+    if not access.is_trusted(request.client.host if request.client else None):
+        raise HTTPException(403, "samo s računala ili iz tvoje Tailscale mreže")
     url = access.mobile_url(PORT)
     return {"url": url, "qr": access.qr_svg(url)}
 

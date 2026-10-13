@@ -78,3 +78,11 @@ def test_polite_gate_limits_parallel_requests_and_spacing():
     peak, starts = asyncio.run(run())
     assert peak <= 2
     assert all(b - a >= 0.045 for a, b in zip(starts, starts[1:]))
+
+
+def test_access_trusts_localhost_and_tailscale_only():
+    from core import access
+    assert access.is_trusted("127.0.0.1") and access.is_trusted("100.101.102.103")
+    assert not access.is_trusted("192.168.1.20") and not access.is_trusted("8.8.8.8") and not access.is_trusted(None)
+    assert not access.allowed("192.168.1.20", None, "pogresan-kljuc")
+    assert access.allowed("192.168.1.20", access.key(), None)

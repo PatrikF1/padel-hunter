@@ -49,6 +49,12 @@ reserve, superlight, pro, edt`, pa kod pretrage "Metalbone CTRL 3.4 2025":
 
 Novi izvor kataloga = async funkcija koja vraća `list[Racket]`, dodana u `PROVIDERS` u [core/catalog.py](core/catalog.py).
 
+## Server 0–24 h (Oracle Cloud, besplatno)
+
+Da app radi i kad je računalo ugašeno (pretraga s iPhonea s bilo kojeg mjesta, praćenje i obavijesti):
+upute korak po korak su u [deploy/ORACLE.md](deploy/ORACLE.md). Ukratko: server u Oracle konzoli,
+pa `bash deploy/upload.sh ubuntu@<IP>`, pa Tailscale na serveru i iPhoneu.
+
 ## Dubinska provjera oglasa
 
 Ljudi na oglasnicima često pišu nepotpune naslove: naslov kaže "Adidas Metalbone", a opis "Metalbone 3.3, 2024".
