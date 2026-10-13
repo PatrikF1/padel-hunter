@@ -1,0 +1,64 @@
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #16181d; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #2563eb; --ok: #16a34a; --bad: #dc2626; --deal: #ea580c; --deal-bg: #fff7ed;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6; --line: #2a2e36;
+          --accent: #60a5fa; --ok: #4ade80; --bad: #f87171; --deal: #fb923c; --deal-bg: #2a1a0e; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+         padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; }
+nav button { background: none; color: var(--muted); border: 0; padding: 6px 10px; border-radius: 8px; }
+nav button.active { color: var(--text); background: var(--bg); font-weight: 600; }
+.tab { display: none; } .tab.active { display: block; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+input { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+#q, #w-q, #tg-token, #ebay-id, #ebay-secret { flex: 1 1 220px; }
+input[type=number] { width: 110px; }
+button { font: inherit; padding: 9px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: transparent; color: var(--muted); border-radius: 0; padding: 6px 12px; }
+.seg button.active { background: var(--accent); color: #fff; }
+.hint { color: var(--muted); font-size: 13px; }
+.steps { color: var(--muted); padding-left: 20px; } .steps b { color: var(--text); }
+code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); vertical-align: middle; }
+.dot.on { background: var(--ok); }
+
+.sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--card); }
+.chip.ok { color: var(--ok); } .chip.err { color: var(--bad); } .chip.wait::after { content: " …"; }
+.summary { color: var(--muted); margin-bottom: 8px; min-height: 1.4em; }
+.group { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 6px; }
+
+.offer { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; margin-bottom: 6px;
+         background: var(--card); border: 1px solid var(--line); border-radius: 10px; color: inherit; text-decoration: none; }
+.offer:hover { border-color: var(--accent); }
+.offer img { width: 64px; height: 64px; object-fit: contain; border-radius: 6px; background: #fff; }
+.offer .title { font-weight: 600; }
+.offer .meta, .offer .note, .offer .breakdown { font-size: 12px; color: var(--muted); }
+.offer .price { text-align: right; white-space: nowrap; }
+.offer .total { font-size: 18px; font-weight: 700; }
+.offer.deal { border-color: var(--deal); background: var(--deal-bg); }
+.offer.best { box-shadow: 0 0 0 2px var(--ok) inset; }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 4px; border: 1px solid var(--line); }
+.badge.deal { background: var(--deal); color: #fff; border-color: var(--deal); }
+.badge.new { color: var(--ok); } .badge.used { color: var(--muted); }
+.est { border-bottom: 1px dotted var(--muted); }
+
+.watch, .health { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px;
+                  background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.watch a { color: var(--accent); }
+@media (max-width: 560px) {
+  .offer { grid-template-columns: 48px 1fr; } .offer img { width: 48px; height: 48px; }
+  .offer .price { grid-column: 2; text-align: left; }
+}
