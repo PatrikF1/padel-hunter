@@ -2,8 +2,9 @@
 import pytest
 
 from core.matcher import (EXACT, NO_MATCH, NOTE_YEAR_MISSING, REASON_ACCESSORY, REASON_MISSING_WORDS,
-                          REASON_NOT_FOR_SALE, REASON_OTHER_BRAND, REASON_OTHER_MODEL_NUMBER, REASON_OTHER_YEAR,
-                          VARIANT, YEAR_MISSING, looks_new, match, parse_query, tokens, worth_opening)
+                          REASON_NO_CONTEXT, REASON_NOT_FOR_SALE, REASON_OTHER_BRAND, REASON_OTHER_MODEL_NUMBER,
+                          REASON_OTHER_SPORT, REASON_OTHER_YEAR, VARIANT, YEAR_MISSING, looks_new, match, parse_query,
+                          tokens, worth_opening, years)
 
 
 def score(query: str, title: str, category: str = "", details: str = "") -> float:
@@ -168,3 +169,82 @@ def test_racket_sold_with_protector_is_kept():
 def test_too_cheap_to_be_a_racket():
     from core.matcher import REASON_TOO_CHEAP
     assert match(parse_query("nox at10"), "Nox AT10 mini privjesak reket", price=7.5).reason == REASON_TOO_CHEAP
+
+
+# ---------- stvarni naslovi na kojima je matcher griješio (pregled ~10 000 oglasa, 2026-10-13) ----------
+def market_score(query: str, title: str, details: str = "") -> float:
+    return match(parse_query(query), title, details=details, marketplace=True).score
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("Bullpadel Hack 03 Comfort 24", {2024}),          # godina iza oznake verzije
+    ("Bullpadel Vertex 04 Women 25 Pack", {2025}),
+    ("Pala Bullpadel Vertex 04 W 25", {2025}),         # 'W' je oznaka verzije, ne dio broja modela
+    ("Vertex PL Tour Final 26V", {2026}),
+    ("Nox AT10 18K Alum", set()),                      # 18K je karbon, ne 2018
+    ("Nox AT10 Genius 24K", set()),
+    ("Royal Padel M27 Hybrid", set()),                 # M27 je model
+    ("Head Speed Pro 38 mm", set()),
+])
+def test_two_digit_years(title, expected):
+    assert years(tokens(title)) == expected
+
+
+def test_marketplace_listing_must_mention_brand_or_padel():
+    query = "head extreme pro 2025"
+    assert market_score(query, "SanDisk Extreme Pro 128 GB micro sd") == NO_MATCH
+    assert market_score(query, "X-fact Extreme Pro") == NO_MATCH
+    assert market_score(query, "Padel reket Extreme Pro") == YEAR_MISSING     # bez brenda, ali je padel reket
+    assert market_score(query, "Head Extreme Pro 2025") == EXACT
+    assert market_score(query, "Extreme Pro 2025", details="Head padel reket, malo korišten") == EXACT
+    assert score(query, "Extreme Pro 2025 Padelschläger") == EXACT            # trgovina: brend je u zasebnom polju
+    assert market_score("bullpadel hack 03 2024", "HACK OUTBREAK PART 3 PS2") == NO_MATCH
+
+
+def test_listing_without_context_is_opened_only_when_model_matches():
+    wanted = parse_query("adidas metalbone 3.4 2025")
+    no_context = match(wanted, "Metalbone 3.4", marketplace=True)
+    assert no_context.reason == REASON_NO_CONTEXT and worth_opening(wanted, "Metalbone 3.4", no_context)
+    wanted = parse_query("head extreme pro 2025")
+    car = match(wanted, "Dacia Jogger 1.0 Extreme", marketplace=True)
+    assert not worth_opening(wanted, "Dacia Jogger 1.0 Extreme", car)         # ne trošimo otvaranja na aute
+
+
+def test_other_sports_rejected():
+    assert match(parse_query("head extreme pro"), "HEAD Extreme Pro Pickleball Paddle").reason == REASON_OTHER_SPORT
+    assert score("head extreme pro", "Head Extreme Pro tennis racket") == NO_MATCH
+    assert score("head extreme pro", "Head Extreme Pro Padel Tennis Racket") == EXACT
+
+
+def test_bag_is_not_a_racket_even_with_word_racket():
+    assert match(parse_query("babolat technical viper"), "Babolat RH Pro Technical Viper Racket Bag").reason == REASON_ACCESSORY
+    assert score("head extreme pro", "Head Pro Duffle L Extreme Bag", category="Rackets") == NO_MATCH
+    assert score("bullpadel hack 03 2024", "Pala BULLPADEL HACK 03 2024 + Paletero BULLPADEL BPP-24014") == EXACT
+    assert score("bullpadel hack 03", "PACK Hack 03 bag AVANT") == EXACT
+    assert score("bullpadel hack 03", "Bullpadel Hack 03 reket sa torbom") == EXACT
+
+
+def test_plus_in_model_name_is_not_a_bundle():
+    assert "paket" not in match(parse_query("adidas metalbone hrd 3.4"), "ADIDAS METALBONE HRD+ 3.4 2025").note
+
+
+def test_decimal_is_part_of_model_number():
+    assert score("wilson bela pro v2", "Wilson Bela Pro V2.5 Padel Racket") == NO_MATCH
+    assert score("wilson bela pro v2", "Wilson Bela Pro V2 Padel Racket") == EXACT
+    assert score("wilson bela pro v2.5", "Pala Wilson Bela Pro V2.5 2025") == EXACT
+    assert score("nox at10 genius 18k", "Nox AT10 12K Genius 18K") == EXACT   # '10 12' nije decimala
+
+
+def test_test_racket_is_variant():
+    result = match(parse_query("head extreme pro 2025"), "Pala de TEST Head Extreme Pro 2025")
+    assert result.score == VARIANT and "testni" in result.note
+
+
+def test_generation_checked_against_catalog():
+    wanted = parse_query("babolat technical viper 2025")
+    wanted.generations = {("2", "5"): {2025}, ("3", "0"): {2026}}             # inače puni engine iz kataloga
+    assert match(wanted, "Babolat Technical Viper 2.5").score == EXACT        # katalog: 2.5 je model 2025
+    assert match(wanted, "Babolat Technical Viper 3.0").reason == REASON_OTHER_YEAR
+    assert match(wanted, "Babolat Technical Viper 3.1 Lebron").score == VARIANT   # katalog ne zna 3.1
+    assert match(wanted, "Babolat Technical Viper 2.5 2025").score == EXACT
+    assert match(wanted, "Babolat Technical Viper Juan Lebrón").score == YEAR_MISSING

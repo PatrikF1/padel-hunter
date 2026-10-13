@@ -1,6 +1,8 @@
 """PrestaShop trgovine - njihova pretraga vraća JSON kad se pozove kao AJAX.
 
 Nova PrestaShop trgovina = jedan red u SHOPS + pravilo dostave u core/shipping.py.
+Adresu pretrage provjeri u pregledniku: neke trgovine na "&resultsPerPage=100" vrate 0 proizvoda ili 403
+(bez greške!), pa se taj dodatak piše samo trgovinama koje ga podnose.
 """
 import asyncio
 from urllib.parse import quote_plus
@@ -11,14 +13,15 @@ from core.shipping import shop_shipping
 
 from .base import MAX_PAGES, Source
 
-PAGE_SIZE = 100  # trgovina može vratiti i manje po stranici
+BIG_PAGES = "&resultsPerPage=100"  # manje zahtjeva; samo za trgovine koje to podnose
 
 SHOPS = {  # name: (label, search_url_template)
-    "zonadepadel": ("Zona de Padel", "https://www.zonadepadel.com/search?controller=search&s={q}"),
+    "zonadepadel": ("Zona de Padel", "https://www.zonadepadel.com/search?controller=search&s={q}" + BIG_PAGES),
     "time2padel": ("Time2Padel", "https://www.time2padel.com/en/look-for?s={q}"),
     "stockpadel": ("StockPadel", "https://www.stockpadel.com/search?controller=search&s={q}"),
-    "areapadel": ("Area Padel", "https://areapadel.com/search?controller=search&s={q}"),
-    "ipontennis": ("Ipon Tennis", "https://www.ipontennis.com/search?controller=search&s={q}"),
+    "areapadel": ("Area Padel", "https://areapadel.com/busqueda?controller=search&s={q}"),
+    "ipontennis": ("Ipon Tennis", "https://www.ipontennis.com/en/search?controller=search&s={q}"),
+    "extremepadel": ("Extreme Padel", "https://www.extreme-padel.fr/recherche?controller=search&s={q}" + BIG_PAGES),  # FR
 }
 AJAX_HEADERS = {"accept": "application/json", "x-requested-with": "XMLHttpRequest"}
 
@@ -42,7 +45,7 @@ def _source(name: str) -> Source:
     async def search(query: str) -> list[Offer]:
         async with session() as client:
             async def page(n: int) -> dict:
-                url = url_template.format(q=quote_plus(query)) + f"&resultsPerPage={PAGE_SIZE}&page={n}"
+                url = url_template.format(q=quote_plus(query)) + (f"&page={n}" if n > 1 else "")
                 response = await client.get(url, headers=AJAX_HEADERS)
                 response.raise_for_status()
                 return response.json()

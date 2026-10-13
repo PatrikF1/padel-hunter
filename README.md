@@ -60,8 +60,12 @@ pa `bash deploy/upload.sh ubuntu@<IP>`, pa Tailscale na serveru i iPhoneu.
 Ljudi na oglasnicima često pišu nepotpune naslove: naslov kaže "Adidas Metalbone", a opis "Metalbone 3.3, 2024".
 Zato se oglasnici (Vinted, Njuškalo, Index) pretražuju i šire, samo po nazivu modela (npr. `metalbone`).
 Oglasi čiji naslov spominje model, ali ne i verziju ili godinu, **otvaraju se i čita se opis**
-(do 30 po izvoru, opisi se pamte 24 h). Ako opis potvrdi točnu verziju, oglas ulazi u rezultate s
-oznakom "✓ potvrđeno iz opisa oglasa".
+(po pretrazi do 20 novih po izvoru, na Vintedu 4, najjeftiniji prvi; opisi se pamte 24 h, pa svaka
+sljedeća pretraga dočita ostale). Ako opis potvrdi točnu verziju, oglas ulazi u rezultate s oznakom
+"✓ potvrđeno iz opisa oglasa".
+
+Na oglasnicima oglas mora spomenuti i brend iz upita ili riječ padel/reket (u naslovu ili opisu), inače
+"SanDisk Extreme Pro" prolazi kao Head Extreme Pro. Oglasi koji ne liče na reket se ni ne otvaraju.
 
 Pravila: opis može **dopuniti** naslov (verzija, broj, godina). Torba ili brend iz opisa ne odbacuju oglas
 ("dolazi s torbom"), a godina iz opisa samo potvrđuje ("kupljen 2023" ne odbacuje).
@@ -80,14 +84,14 @@ app se otvori (u pregledniku mobitela "Dodaj na početni zaslon" daje ikonu kao 
 
 | Izvor | Vrsta | Kako | Dostava u HR |
 |---|---|---|---|
-| Vinted | rabljeno/novo, i iz drugih EU zemalja | podaci iz stranice pretrage + opis oglasa | procjena 3,99 € (paketomat) + stvarna naknada za zaštitu kupca |
+| Vinted | rabljeno/novo, i iz drugih EU zemalja | podaci iz stranice pretrage + opis oglasa; najviše ~20 zahtjeva/min (inače 429) | procjena 3,99 € (paketomat) + stvarna naknada za zaštitu kupca |
 | Njuškalo | rabljeno | HTML pretraga + opis i stanje oglasa | procjena 3,50 € (BOX NOW) |
 | Index oglasi | rabljeno | njihov JSON API + opis oglasa | procjena 3,50 € (BOX NOW) |
 | eBay.de | novo/rabljeno, samo EU | službeni Browse API (ključ u Postavkama) ili scraping kao rezerva | **stvarna**, za Zagreb 10000 |
-| Padel Market, Padel Pro Shop, Padelshop, Padel-Point, Tennis-Point, Padelwebshop, Holland Padel, Padelstore24, Padelfreunde, JustPadel | novo | Shopify `suggest.json` | **stvarna**, iz košarice; rasprodano se izbacuje |
+| Padel Market, Padel Pro Shop, Padelshop, Padel-Point, Tennis-Point, Padelwebshop, Holland Padel, Padelstore24, Padelfreunde, JustPadel, **StreetPadel (ES), Padel Island (ES), Padel Kiwi (ES), Esprit Padel Shop (FR), LovePadel (IE), NOX službena trgovina (ES)** | novo | Shopify `suggest.json` + stranice pretrage | **stvarna**, iz košarice za Zagreb 10000 (trgovina koja ne šalje u HR sama ispada) |
 | Padel Nuestro, Padel Reference | novo | Doofinder search API | cjenik trgovine |
-| Zona de Padel, Time2Padel, StockPadel, Area Padel, Ipon Tennis | novo | PrestaShop AJAX pretraga | cjenik trgovine ili procjena |
-| Padel.tienda, TodoPadel, Sportivo (HR) | novo | WooCommerce Store API | cjenik trgovine ili procjena |
+| Zona de Padel, Time2Padel, StockPadel, Area Padel, Ipon Tennis, **Extreme Padel (FR)** | novo | PrestaShop AJAX pretraga | cjenik trgovine ili procjena |
+| Padel.tienda, TodoPadel, **Padel Profi (DE)** | novo | WooCommerce Store API | **stvarna**, iz košarice za Zagreb 10000; cjenik je rezerva |
 | **Vidmar Sport, Teniswil, Marines Sport, Tennis Zone** (HR) | novo | cijela kategorija padel reketa (HTML) | domaća dostava, besplatno iznad praga |
 
 Cjenici dostave u [core/shipping.py](core/shipping.py) provjereni su 2026-10-13 na stranicama trgovina:
@@ -96,6 +100,9 @@ Cjenici dostave u [core/shipping.py](core/shipping.py) provjereni su 2026-10-13 
 [Zona de Padel](https://www.zonadepadel.com/content/28-shipment-information),
 [Padel Reference](https://www.padelreference.com/en/terms-and-conditions).
 U sučelju je procjena označena s **~** i točkastom crtom.
+
+Za Shopify i WooCommerce trgovine dostava se ne čita iz cjenika nego iz košarice trgovine, za svaki
+pronađeni reket posebno.
 
 Ponude koje se šalju izvan EU (npr. iz UK-a) se izbacuju jer se na njih plaća carina i PDV.
 
@@ -124,13 +131,13 @@ upit ──► engine.stream()  ── svi izvori paralelno (timeout 15 s, cache
 | [app.py](app.py) | web server, samo povezuje dijelove | rute `/api/...` |
 | [core/models.py](core/models.py) | jedna ponuda | `Offer` (`total` = cijena + naknade + dostava) |
 | [core/matcher.py](core/matcher.py) | je li oglas traženi reket | `parse_query` → `WantedRacket`, `match` → `MatchResult`; **rječnici** brendova, verzija, opreme |
-| [core/engine.py](core/engine.py) | pretraga kroz sve izvore | `run_source`, `deep_check`, `reference_price`, `explain`; `SourceHealth` |
-| [core/catalog.py](core/catalog.py) | katalog reketa za filtere | `Racket`, `PROVIDERS`, `merge`, `version_words` |
+| [core/engine.py](core/engine.py) | pretraga kroz sve izvore | `run_source`, `fetch` (spremljeni rezultati kad izvor padne), `deep_check`, `reference_price`, `explain`; `SourceHealth` |
+| [core/catalog.py](core/catalog.py) | katalog reketa za filtere | `Racket`, `PROVIDERS`, `merge`, `version_words`, `generations` |
 | [core/shipping.py](core/shipping.py) | dostava u HR | `SHOP_RULES` (cjenici), `MARKETPLACE_EST`, `to_eur` |
 | [core/watcher.py](core/watcher.py) | praćenje u pozadini | `loop`, `check`, `is_relevant`, `is_notifiable` |
 | [core/telegram.py](core/telegram.py) | obavijesti | `send`, `detect_chat`, `format_offer` |
 | [core/db.py](core/db.py) | baza `data.db` - **sav SQL je ovdje** | `Watch`, `list_watches`, `remember_offer`... |
-| [core/http.py](core/http.py) | HTTP klijent | `session` (imitira preglednik, `HOST_LIMITS` = pristojnost prema stranicama), `eur` |
+| [core/http.py](core/http.py) | HTTP klijent | `session` (imitira preglednik), `HOST_LIMITS` (razmak i budžet zahtjeva po stranici), `RateLimited` (pauza nakon 429), `eur` |
 | [core/access.py](core/access.py) | pristup s mobitela | tajni ključ, QR kod |
 | [sources/base.py](sources/base.py) | sučelje izvora | `Source`, `fetch_pages` |
 | [sources/*.py](sources/) | po jedan modul po izvoru ili platformi | svaki ima listu `SOURCES` |
@@ -194,6 +201,13 @@ Upute su u aplikaciji, na kartici **Postavke**. Tokeni i ključevi spremaju se s
 (u `.gitignore`) i nikad se ne šalju natrag u preglednik.
 
 ## Ograničenja
+- **Vinted dopušta oko 20 zahtjeva u minuti.** Jedna pretraga ih treba oko 8 i ide odmah; kad ih je više
+  zaredom (ili puno praćenih modela), Vinted rezultati kasne do 40 s. Ako Vinted ipak odgovori 429, app
+  30 s ne šalje ništa; ako Cloudflare postavi provjeru (403), pauza je 10 min. Za to vrijeme prikazuju se
+  nedavni rezultati (do 30 min stari) s oznakom "(spremljeno)". Granice su u `HOST_LIMITS`
+  ([core/http.py](core/http.py)).
+- Trgovine koje su provjerene, ali ne šalju u HR pa nisu dodane: Casas Padel, Centercourt.de, PadelXpert.nl.
+  PDH Sports i PadelOnline su u UK-u (carina).
 - Facebook Marketplace traži prijavu, pa nije podržan.
 - Intersport.hr i Hervis.hr učitavaju proizvode JavaScriptom, a Padel Ibérico blokira automatski pristup
   (Cloudflare), pa nisu uključeni.

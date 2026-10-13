@@ -2,38 +2,80 @@
 
 curl_cffi imitira pravi preglednik (TLS otisak). Uz to je klijent PRISTOJAN: prema svakoj stranici ide
 ograničen broj istovremenih zahtjeva s razmakom, jer oglasnici (npr. Vinted) blokiraju prebrze klijente.
+Kad stranica ipak odgovori 429 (previše zahtjeva) ili Cloudflare provjerom, prema njoj se neko vrijeme ne šalje
+ništa (RateLimited), a pretraga prikazuje nedavne rezultate tog izvora (core/engine.py -> fetch).
 """
 import asyncio
 import json
 import re
 import time
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from curl_cffi.requests import AsyncSession
 
 TIMEOUT = 10
-# host -> (najviše istovremenih zahtjeva, najmanji razmak između zahtjeva u sekundama)
+
+
+@dataclass(frozen=True)
+class Limit:
+    parallel: int          # najviše istovremenih zahtjeva
+    spacing: float         # najmanji razmak između početaka zahtjeva (s)
+    burst: int = 0         # budžet: toliko zahtjeva smije odmah... (0 = bez budžeta)
+    refill: float = 0.0    # ...a zatim jedan novi svakih `refill` sekundi
+
+
 HOST_LIMITS = {
-    "www.vinted.hr": (2, 0.6),
-    "www.njuskalo.hr": (2, 0.4),
-    "www.index.hr": (3, 0.2),
-    "www.ebay.de": (1, 1.0),
+    # Vinted, izmjereno 2026-10-13: 22 zahtjeva/min prolazi satima, ~25 zahtjeva u 25 s daje 429.
+    # Jedna pretraga treba ~8 zahtjeva (stranice + opisi), pa ide odmah; sljedeće čekaju punjenje (20/min).
+    "www.vinted.hr": Limit(parallel=2, spacing=0.5, burst=8, refill=3.0),
+    "www.njuskalo.hr": Limit(2, 0.4),
+    "www.index.hr": Limit(3, 0.2),
+    "www.ebay.de": Limit(1, 1.0),
 }
-DEFAULT_LIMIT = (6, 0.0)
+DEFAULT_LIMIT = Limit(6, 0.0)
+COOLDOWN_SECONDS = 30    # pauza nakon 429 kad stranica ne pošalje Retry-After
+CHALLENGE_SECONDS = 600  # pauza kad Cloudflare postavi provjeru (403): to je teža blokada, prolazi tek za neko vrijeme
+
+
+class RateLimited(Exception):
+    """Stranica je odgovorila 429 ili Cloudflare provjerom (403) - do isteka pauze zahtjevi prema njoj odmah padaju (ne pogoršavamo blokadu)."""
 
 
 class _Gate:
-    def __init__(self, parallel: int, spacing: float):
-        self.sem, self.spacing = asyncio.Semaphore(parallel), spacing
+    def __init__(self, limit: Limit):
+        self.limit, self.sem = limit, asyncio.Semaphore(limit.parallel)
         self.lock, self.next_at = asyncio.Lock(), 0.0
+        self.tokens, self.refilled_at = float(limit.burst), time.monotonic()
+        self.blocked_until, self.status = 0.0, 429   # pauza nakon blokade i kod kojim je stranica odgovorila
+
+    def _budget_wait(self) -> float:
+        """Koliko čekati na sljedeći zahtjev iz budžeta (i odmah ga potroši)."""
+        limit, now = self.limit, time.monotonic()
+        if not limit.burst:
+            return 0.0
+        self.tokens = min(limit.burst, self.tokens + (now - self.refilled_at) / limit.refill)
+        self.refilled_at = now
+        self.tokens -= 1  # smije u minus: tko čeka, već je u redu
+        return max(0.0, -self.tokens * limit.refill)
+
+    def check(self, host: str, status: int = 0) -> None:
+        wait = self.blocked_until - time.monotonic()
+        if wait > 0:
+            self.status = status or self.status
+            raise RateLimited(f"{host} ograničava zahtjeve (HTTP {self.status}), pauza još {wait:.0f} s")
 
     async def __aenter__(self):
         await self.sem.acquire()
-        async with self.lock:  # razmak između početaka zahtjeva
-            wait = self.next_at - time.monotonic()
-            if wait > 0:
-                await asyncio.sleep(wait)
-            self.next_at = time.monotonic() + self.spacing
+        try:
+            async with self.lock:  # razmak između početaka zahtjeva
+                wait = max(self.next_at - time.monotonic(), self._budget_wait())
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                self.next_at = time.monotonic() + self.limit.spacing
+        except BaseException:  # pretraga je odustala dok smo čekali red - mjesto se mora osloboditi
+            self.sem.release()
+            raise
 
     async def __aexit__(self, *exc):
         self.sem.release()
@@ -42,17 +84,31 @@ class _Gate:
 _gates: dict[str, _Gate] = {}
 
 
-def _gate(url: str) -> _Gate:
-    host = urlsplit(url).hostname or ""
+def _gate(host: str) -> _Gate:
     if host not in _gates:
-        _gates[host] = _Gate(*HOST_LIMITS.get(host, DEFAULT_LIMIT))
+        _gates[host] = _Gate(HOST_LIMITS.get(host, DEFAULT_LIMIT))
     return _gates[host]
+
+
+def _retry_after(response) -> float:
+    value = response.headers.get("retry-after", "")
+    return min(float(value), 300) if value.isdigit() else COOLDOWN_SECONDS
 
 
 class PoliteSession(AsyncSession):
     async def request(self, method, url, *args, **kwargs):
-        async with _gate(url):
-            return await super().request(method, url, *args, **kwargs)
+        host = urlsplit(url).hostname or ""
+        gate = _gate(host)
+        gate.check(host)
+        async with gate:
+            gate.check(host)  # netko drugi je mogao dobiti 429 dok smo čekali red
+            response = await super().request(method, url, *args, **kwargs)
+        challenged = response.headers.get("cf-mitigated") == "challenge"  # Cloudflare traži provjeru preglednika
+        if response.status_code == 429 or challenged:
+            pause = CHALLENGE_SECONDS if challenged else _retry_after(response)
+            gate.blocked_until = time.monotonic() + pause
+            gate.check(host, response.status_code)
+        return response
 
 
 def session(impersonate: str = "chrome") -> AsyncSession:

@@ -2,6 +2,7 @@
 
 - Shopify trgovine: STVARNA cijena (košarica -> shipping_rates za Zagreb 10000), vidi sources/shopify.py
 - eBay: stvarna cijena iz oglasa (eBay prepoznaje HR kao odredište)
+- WooCommerce trgovine: STVARNA cijena iz košarice (Store API), vidi sources/woocommerce.py; cjenik je rezerva
 - ostale trgovine: cjenik s njihovih stranica (provjereno 2026-10-13, izvori u README)
 - oglasnici (Vinted / Njuškalo / Index): procjena za paketomat, jasno označena
 """
@@ -26,14 +27,18 @@ SHOP_RULES = {
     # stockpadel.com/en/content/18-shipping-costs- (UPS, EU)
     "stockpadel": {"tiers": [(400, 4.95), (200, 9.95), (100, 14.95), (0, 19.95)], "exact": True,
                    "note": "cjenik trgovine za EU"},
+    # extreme-padel.fr/content/1-livraison - "Autres pays de la Zone UE", cijena nije objavljena
+    "extremepadel": {"tiers": [(0, 15.0)], "exact": False,
+                     "note": "procjena: šalje u cijelu EU, cijena za HR vidljiva u košarici"},
     "areapadel": {"tiers": [(0, 14.95)], "exact": False, "note": "procjena: UPS, cijena vidljiva u košarici"},
     "ipontennis": {"tiers": [(0, 14.95)], "exact": False, "note": "procjena: cijena vidljiva u košarici"},
+    # WooCommerce trgovine: ovo je samo rezerva kad košarica ne odgovori (inače stvarna cijena, sources/woocommerce.py)
     # padel.tienda/envios - Hrvatska navedena
     "padeltienda": {"tiers": [(390, 0.0), (0, 34.95)], "exact": True, "note": "cjenik trgovine za HR"},
-    # todopadel.shop/envios - Europa, po težini, od 8,47 € + PDV
-    "todopadel": {"tiers": [(0, 10.59)], "exact": False, "note": "procjena: od 8,47 € + PDV, ovisi o težini"},
+    # todopadel.shop - košarica je 2026-10-13 za reket u HR tražila 62,82 € (cjenik "od 8,47 €" ne vrijedi za HR)
+    "todopadel": {"tiers": [(0, 62.82)], "exact": False, "note": "procjena prema košarici, provjeri pri kupnji"},
+    "padelprofi": {"tiers": [(0, 4.95)], "exact": False, "note": "procjena prema košarici, provjeri pri kupnji"},
     # hrvatske trgovine - domaća dostava
-    "sportivo": {"tiers": [(100, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 100 €, inače procjena"},
     "vidmarsport": {"tiers": [(100, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 100 €, inače procjena"},
     "tenniszone": {"tiers": [(129, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 129 €, inače procjena"},
     "teniswil": {"tiers": [(0, 4.99)], "exact": False, "note": "HR trgovina: procjena domaće dostave"},

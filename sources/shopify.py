@@ -4,7 +4,9 @@ Pretraga: /search/suggest.json. Za pronađene rekete dohvaća se STVARNA cijena 
 reket se doda u anonimnu košaricu i pita se /cart/shipping_rates.json za Zagreb 10000.
 Ništa se ne naručuje, košarica nestaje sa sesijom.
 
-Nova Shopify trgovina = jedan red u SHOPS.
+Nova Shopify trgovina = jedan red u SHOPS. Adresa mora biti ona na koju trgovina preusmjerava (s www ili bez):
+košarica se pamti kolačićem, a preusmjeravanje ga izgubi pa dostava "nije dohvaćena".
+Trgovina koja ne šalje u HR sama ispada: shipping_rates za Zagreb vrati prazno.
 """
 import asyncio
 import json
@@ -29,12 +31,22 @@ SHOPS = {  # name: (label, base_url)
     "padelstore24": ("Padelstore24", "https://padelstore24.de"),
     "padelfreunde": ("Padelfreunde", "https://padelfreunde.de"),
     "justpadel": ("JustPadel", "https://justpadel.com"),
+    # dodano 2026-10-13, dostava u HR potvrđena iz košarice (cijena u zagradi vrijedila je za jedan reket)
+    "streetpadel": ("StreetPadel", "https://www.streetpadel.com"),          # ES (11,96 €)
+    "padelisland": ("Padel Island", "https://www.padel-island.com"),        # ES (11,90 €)
+    "padelkiwi": ("Padel Kiwi", "https://www.padelkiwi.com"),               # ES (10,99 €)
+    "espritpadel": ("Esprit Padel Shop", "https://esprit-padel-shop.com"),  # FR (14,90 €)
+    "lovepadel": ("LovePadel", "https://lovepadel.ie"),                     # IE (8,90 €)
+    "noxsport": ("NOX (službena trgovina)", "https://noxsport.com"),        # ES (15,95-18,50 €)
 }
 HR_ADDRESS = {"shipping_address[zip]": "10000", "shipping_address[country]": "Croatia",
               "shipping_address[province]": ""}
 SHIPPING_TTL = 6 * 3600
-QUOTE_PARALLEL = 5  # istovremenih provjera košarice po trgovini (da nas ne blokiraju)
-QUOTE_MAX = 40      # najviše proizvoda po pretrazi kojima provjeravamo stvarnu dostavu
+QUOTE_PARALLEL = 3  # istovremenih provjera košarice po trgovini (da nas ne blokiraju)
+QUOTE_MAX = 20      # najviše proizvoda po pretrazi kojima provjeravamo stvarnu dostavu (najjeftiniji prvi)
+# Svaka provjera košarice je nova veza (nova sesija = prazna košarica), a trgovina je 16.
+# Zajednička granica da jedna pretraga ne otvori desetke veza odjednom.
+ALL_SHOPS_PARALLEL = asyncio.Semaphore(10)
 
 
 @dataclass
@@ -129,10 +141,11 @@ class ShopifyShop:
             image = product.get("featured_image") or ""
             image = "https:" + image if image.startswith("//") else image
             added = await client.post(self.base + "/cart/add.js", json={"items": [{"id": variant["id"], "quantity": 1}]})
-            if added.status_code != 200:  # npr. 422 "rasprodano" iako ga tražilica još prikazuje
+            if added.status_code == 422:  # "rasprodano" iako ga tražilica još prikazuje
                 quote = _Quote(time.time(), 0.0, None, "", sold_out=True)
                 _quotes[url] = quote
                 return quote
+            added.raise_for_status()  # npr. 429: nije rasprodano, samo dostava ovaj put nije dohvaćena
             cart = (await client.get(self.base + "/cart.js")).json()
             currency = cart.get("currency", "EUR")
             price = await to_eur(cart["items"][0]["final_line_price"] / 100, currency)
@@ -148,7 +161,7 @@ class ShopifyShop:
         return quote
 
     async def _limited_quote(self, url: str) -> _Quote:
-        async with self.limit:
+        async with self.limit, ALL_SHOPS_PARALLEL:
             return await self._quote(url)
 
     async def enrich(self, offers: list[Offer]) -> None:

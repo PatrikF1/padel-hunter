@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .http import next_payload, session, text
-from .matcher import ACCESSORY, BRANDS, NEW_HINTS, PACK, STOPWORDS, WantedRacket, tokens, years
+from .matcher import ACCESSORY, BRANDS, NEW_HINTS, PACK, STOPWORDS, VARIANTS, WantedRacket, generation, tokens, years
 
 CATALOG_FILE = Path(__file__).resolve().parent.parent / "catalog.json"
 MAX_AGE = 3 * 24 * 3600
@@ -248,7 +248,9 @@ async def refresh_if_stale() -> None:
 
 
 def version_words(wanted: WantedRacket) -> set[str]:
-    """Sve poznate oznake verzija za model iz upita (npr. 'adidas metalbone 3.4' -> {carbon, ctrl, hrd, ...})."""
+    """Sve poznate oznake verzija za model iz upita (npr. 'adidas metalbone 3.4' -> {carbon, ctrl, hrd, ...}),
+    bez riječi koje u katalogu ima SVAKI reket koji odgovara upitu: 'Nox AT10 Genius 18K 2025' se službeno
+    zove '... 18K Alum 2025', pa 'alum' tu nije druga verzija."""
     words = wanted.model_words
     for n in range(min(3, len(words)), 0, -1):  # "at" + "10" -> "at10"
         family = "".join(words[:n])
@@ -256,5 +258,37 @@ def version_words(wanted: WantedRacket) -> set[str]:
         if brands:
             if wanted.brand:  # "black" iz upita odgovara brendu "blackcrown"
                 brands = {b for b in brands if wanted.brand in b} or brands
-            return set().union(*(catalog.vocab.get((b, family), set()) for b in brands))
+            found = set().union(*(catalog.vocab.get((b, family), set()) for b in brands))
+            return found - _common_words(wanted)
     return set()
+
+
+def _same_model(wanted: WantedRacket) -> list[tuple[Racket, list[str]]]:
+    """Reketi iz kataloga čiji naziv sadrži sve riječi modela iz upita (i brend, ako je zadan)."""
+    found = []
+    for racket in catalog.rackets:
+        words = tokens(racket.title)
+        if wanted.brand and wanted.brand not in brand_key(racket.brand) and wanted.brand not in words:
+            continue
+        if all(w in words for w in wanted.model_words):
+            found.append((racket, words))
+    return found
+
+
+def _common_words(wanted: WantedRacket) -> set[str]:
+    """Riječi koje imaju svi reketi iz kataloga koji odgovaraju upitu i njegovoj godini. Opće oznake verzija
+    (comfort, light...) se nikad ne izuzimaju - katalog možda samo nema osnovni model."""
+    if not wanted.model_words or not wanted.years:
+        return set()
+    same = [set(words) for racket, words in _same_model(wanted) if racket.year in wanted.years]
+    return set.intersection(*same) - VARIANTS if same else set()
+
+
+def generations(wanted: WantedRacket) -> dict[tuple[str, ...], set[int]]:
+    """Broj generacije -> godine, npr. za 'babolat technical viper': {('2','5'): {2025}, ('3','0'): {2026}}."""
+    found: dict[tuple[str, ...], set[int]] = {}
+    for racket, words in _same_model(wanted):
+        number = generation(wanted, words)
+        if number and racket.year:
+            found.setdefault(number, set()).add(racket.year)
+    return found

@@ -1,15 +1,18 @@
 /* Padel Hunter - izgled.
-   Odjeljci: boje · osnova · forme · pretraga · katalog · rezultati · praćenje/postavke · MOBITEL (na dnu) */
+   Odjeljci: boje · osnova · zaglavlje · forme · pretraga · katalog · rezultati · praćenje/postavke · MOBITEL (na dnu)
+   Pravilo: sučelje je jednobojno (tekst na pozadini). Boja se koristi samo kad nešto znači:
+   --good = točan model / radi, --deal = apsurdno jeftino, --bad = greška. */
 
 /* ---------- boje (svijetla i tamna tema prema postavkama uređaja) ---------- */
 :root {
-  --bg: #f4f5f7; --card: #fff; --text: #16181d; --muted: #6b7280; --line: #e3e5e9;
-  --accent: #2563eb; --accent-soft: #e8efff; --ok: #16a34a; --bad: #dc2626; --deal: #ea580c; --deal-bg: #fff7ed;
-  --radius: 12px;
+  --bg: #fff; --surface: #f4f5f3; --text: #15181b; --muted: #6a7076; --line: #e2e4e1;
+  --good: #0b7a4b; --deal: #c2410c; --bad: #c62828;
+  --radius: 8px;
+  --gutter: 16px;  /* razmak sadržaja od ruba ekrana */
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6; --line: #2a2e36;
-          --accent: #60a5fa; --accent-soft: #1b2638; --ok: #4ade80; --bad: #f87171; --deal: #fb923c; --deal-bg: #2a1a0e; }
+  :root { --bg: #111315; --surface: #1a1d20; --text: #e9ebec; --muted: #9499a0; --line: #2a2e32;
+          --good: #4cc38a; --deal: #f59e5b; --bad: #f2777a; }
 }
 
 /* ---------- osnova ---------- */
@@ -17,145 +20,140 @@
 html, body { overflow-x: hidden; }
 body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text);
        -webkit-text-size-adjust: 100%; }
-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-         padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
-h1 { font-size: 18px; margin: 0; }
-h2 { font-size: 16px; margin: 24px 0 8px; }
-main { max-width: 980px; margin: 0 auto; padding: 16px; }
+main { max-width: 960px; margin: 0 auto; padding: 20px var(--gutter) 48px; }
+h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+h2 { font-size: 15px; font-weight: 600; margin: 32px 0 8px; padding-top: 20px; border-top: 1px solid var(--line); }
+a { color: inherit; }
+code { background: var(--surface); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+summary { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.tab { display: none; }
+.tab.active { display: block; }
+.hint { color: var(--muted); font-size: 13px; font-weight: 400; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.steps { color: var(--muted); padding-left: 20px; }
+.steps b { color: var(--text); font-weight: 600; }
+
+/* ---------- zaglavlje ---------- */
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+         max-width: 960px; margin: 0 auto; padding: 0 var(--gutter); border-bottom: 1px solid var(--line); }
 nav { display: flex; gap: 4px; }
-nav button { display: inline-flex; gap: 6px; align-items: center; background: none; color: var(--muted); padding: 6px 10px; }
-nav button.active { color: var(--text); background: var(--bg); font-weight: 600; }
-.tab { display: none; } .tab.active { display: block; }
-.hint { color: var(--muted); font-size: 13px; }
-.steps { color: var(--muted); padding-left: 20px; } .steps b { color: var(--text); }
-code { background: var(--bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); vertical-align: middle; }
-.dot.on { background: var(--ok); }
+nav button { background: none; color: var(--muted); border: 0; border-radius: 0; padding: 16px 10px; }
+nav button.active { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--text); }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--bad); vertical-align: middle; }
+.dot.on { background: var(--good); }
 
 /* ---------- forme ---------- */
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-input, select { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
-                background: var(--card); color: var(--text); min-width: 0; }
-select { padding: 8px 10px; background: var(--card); }
-#w-q, #tg-token, #ebay-id, #ebay-secret, #v-text { flex: 1 1 220px; }
-button { font: inherit; padding: 9px 14px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
-button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+input, select, button { font: inherit; border-radius: var(--radius); }
+input, select { padding: 8px 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
+button { padding: 8px 14px; border: 1px solid var(--text); background: var(--text); color: var(--bg); cursor: pointer; }
+button.ghost { background: none; color: var(--text); border-color: var(--line); }
 label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex: none; }
-.seg button { background: transparent; color: var(--muted); border-radius: 0; padding: 7px 12px; }
-.seg button.active { background: var(--accent); color: #fff; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.row > input:not([type="checkbox"]) { flex: 1 1 200px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg button { background: none; color: var(--muted); border: 0; border-radius: 0; }
+.seg button.active { background: var(--text); color: var(--bg); }
 
 /* ---------- pretraga ---------- */
-.search-bar { display: flex; gap: 8px; margin-bottom: 10px; }
-.search-bar input { flex: 1; }
-.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-#f-max { width: 110px; }
-#sources-box { margin: 4px 0; }
-#sources-box summary { cursor: pointer; padding: 4px 0; }
-.sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
-.chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--card); }
-.chip.ok { color: var(--ok); } .chip.err { color: var(--bad); } .chip.wait::after { content: " …"; }
-.summary { color: var(--muted); margin: 4px 0 10px; min-height: 1.4em; font-size: 14px; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.search-bar input { flex: 1; padding: 10px 12px; }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 8px; }
+.range { display: flex; gap: 4px; }
+.range input { width: 84px; }
+#watch-btn { margin-left: auto; }
+.sources { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 10px; }
+.chip { font-size: 13px; color: var(--muted); }
+.chip::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%;
+                background: var(--line); vertical-align: middle; }
+.chip.ok::before { background: var(--good); }
+.chip.err::before { background: var(--bad); }
+.summary { color: var(--muted); font-size: 14px; min-height: 1.45em; margin: 4px 0; }
+.summary b { color: var(--text); font-weight: 600; }
 
 /* ---------- katalog (odabir točne verzije) ---------- */
-#finder { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
-#finder summary, .ratings summary { cursor: pointer; font-weight: 600; }
-.filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 10px 0; }
+#finder { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+#finder > summary { font-weight: 600; }
+.filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
 .filters-grid label { flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; min-width: 0; }
-.filters-grid select { width: 100%; }
-.ratings { margin: 0 0 10px; } .ratings summary { font-size: 13px; color: var(--muted); }
+.ratings { margin-bottom: 12px; }
+.ratings summary { font-size: 13px; color: var(--muted); }
 .versions { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; max-height: 420px; overflow-y: auto; }
-.version { display: flex; gap: 12px; align-items: center; text-align: left; background: var(--bg); color: var(--text);
-           border: 1px solid var(--line); padding: 10px; min-width: 0; }
-.version:hover { border-color: var(--accent); }
-.version img { width: 64px; height: 64px; object-fit: contain; background: #fff; border-radius: 8px; flex: none; }
+.version { display: flex; gap: 12px; align-items: center; text-align: left; padding: 8px; min-width: 0;
+           background: none; color: var(--text); border-color: var(--line); }
+.version:hover { border-color: var(--text); }
+.version img { width: 56px; height: 56px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
 .version .title { font-weight: 600; font-size: 14px; }
-.specs { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0; }
-.spec { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
+.specs { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; color: var(--muted); }
 
-/* ---------- rezultati ---------- */
-.offer { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px 16px;
-         margin-bottom: 10px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-         color: inherit; text-decoration: none; }
-.offer:hover { border-color: var(--accent); }
-.offer img { width: 110px; height: 110px; object-fit: contain; border-radius: 10px; background: #fff; }
-.offer .body { min-width: 0; }
-.offer .title { font-weight: 600; font-size: 16px; line-height: 1.3; }
-.offer .meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 6px 0 4px; }
+/* ---------- rezultati (lista ponuda, razdvojena linijama) ---------- */
+.offer { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 4px 16px; align-items: center;
+         padding: 14px 0; border-bottom: 1px solid var(--line); text-decoration: none; }
+.offer:hover .title { text-decoration: underline; }
+.offer img { width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 6px; }
+.offer .title { font-weight: 600; line-height: 1.3; }
 .offer .meta, .offer .note, .offer .breakdown { font-size: 13px; color: var(--muted); }
-.offer .price { text-align: right; white-space: nowrap; }
-.offer .total { font-size: 22px; font-weight: 700; white-space: nowrap; }
-.offer.deal { border-color: var(--deal); background: var(--deal-bg); }
-.offer.best { box-shadow: 0 0 0 2px var(--ok) inset; }
-.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); }
-.badge.deal { background: var(--deal); color: #fff; border-color: var(--deal); }
-.badge.exact { color: var(--ok); border-color: var(--ok); }
-.badge.variant { color: var(--muted); border-style: dashed; }
-.badge.new { color: var(--ok); } .badge.used { color: var(--muted); }
-.est { border-bottom: 1px dotted var(--muted); }
-.more { width: 100%; margin: 8px 0 24px; }
+.offer .meta { margin-top: 2px; }
+.offer .price { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.offer .total { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.offer.best .total { color: var(--good); }
+.offer.deal .total { color: var(--deal); }
+.tag { font-weight: 600; }
+.tag.deal { color: var(--deal); }
+.est { border-bottom: 1px dotted var(--muted); }  /* procijenjena dostava */
+.more { width: 100%; margin-top: 16px; }
 
 /* ---------- praćenje i postavke ---------- */
-.watch, .health { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px;
-                  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-.watch a { color: var(--accent); }
+.watch, .health { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+                  padding: 12px 0; border-bottom: 1px solid var(--line); }
+#mobile-box h2 { margin-top: 0; padding-top: 0; border-top: 0; }
 .mobile { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.qr svg { width: 200px; height: 200px; border-radius: 8px; }
+.mobile .steps { flex: 1 1 280px; margin: 0; }
+.qr svg { display: block; width: 180px; height: 180px; border-radius: 6px; }
 
-/* =================== MOBITEL (iPhone) =================== */
-@media (max-width: 560px) {
-  body { font-size: 15px; -webkit-tap-highlight-color: transparent; }
+/* =================== MOBITEL =================== */
+/* Ista širina (600px) je i u app.js (IS_PHONE). */
+@media (max-width: 600px) {
+  body { -webkit-tap-highlight-color: transparent; }
   input, select, button { font-size: 16px; }  /* iOS ne zumira stranicu kad su polja 16px */
 
-  /* naslov: mali, ispod notcha */
-  header { padding: calc(8px + env(safe-area-inset-top)) 16px 8px; border-bottom: 0; background: var(--bg); }
-  h1 { font-size: 20px; }
+  /* naslov gore (ispod notcha), izbornik dolje pod palcem */
+  header { padding-top: env(safe-area-inset-top); border-bottom: 0; }
+  h1 { padding: 12px 0 4px; }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; gap: 0; background: var(--bg);
+        border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  nav button { flex: 1; padding: 14px 4px; font-size: 14px; }
+  nav button.active { box-shadow: inset 0 2px 0 var(--text); }
+  main { padding: 0 var(--gutter) calc(72px + env(safe-area-inset-bottom)); }
 
-  /* donji izbornik kao u iOS aplikacijama: ikona + tekst */
-  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--card);
-        border-top: 1px solid var(--line); padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); }
-  nav button { flex: 1; flex-direction: column; gap: 0; padding: 6px 2px; border-radius: 10px; font-size: 11px; }
-  nav button .icon { font-size: 22px; line-height: 1.2; }
-  nav button.active { background: var(--accent-soft); color: var(--accent); }
-  main { padding: 0 12px calc(78px + env(safe-area-inset-bottom)); }
+  /* pretraga ostaje na vrhu dok se lista pomiče; body::before prekriva statusnu traku (sat, baterija)
+     kad je app dodan na početni zaslon pa sadržaj ide do vrha ekrana */
+  body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+                 height: env(safe-area-inset-top); background: var(--bg); }
+  .search-bar { position: sticky; top: env(safe-area-inset-top); z-index: 5; background: var(--bg);
+                margin: 0 calc(-1 * var(--gutter)); padding: 8px var(--gutter); }
 
-  /* pretraga zalijepljena gore */
-  /* traka ispod statusne trake (sat, baterija) - kad je app na početnom zaslonu, sadržaj ide do vrha ekrana */
-  body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top);
-                 background: var(--bg); z-index: 20; }
-  .search-bar { position: sticky; top: env(safe-area-inset-top); z-index: 5; margin: 0 -12px 8px; padding: 8px 12px;
-                background: var(--bg); }
-  .search-bar input { border-radius: 12px; padding: 11px 12px; }
-  .search-bar button { padding: 0 16px; border-radius: 12px; }
+  /* filteri: stanje u punoj širini, ostalo u dva stupca */
+  .toolbar { display: grid; grid-template-columns: 1fr 1fr; }
+  .seg { grid-column: 1 / -1; display: flex; }
+  .toolbar label { grid-column: 1 / -1; }
+  .seg button { flex: 1; }
+  .range input { width: 50%; }
 
-  /* filteri i poredak u jednom redu koji se pomiče prstom */
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; margin: 0 -12px 6px; padding: 2px 12px 6px; scrollbar-width: none; }
-  .toolbar::-webkit-scrollbar { display: none; }
-  .toolbar > * { flex: none; }
-  .toolbar select, .toolbar input, .toolbar button, .seg button { padding: 7px 10px; font-size: 14px; }
-  #f-max { width: 92px; }
-
-  /* katalog: dva uredna stupca */
-  #finder { padding: 10px; }
-  #finder summary .hint { display: block; font-weight: 400; margin-top: 2px; }
-  .filters-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .filters-grid select { font-size: 15px; padding: 7px 8px; }
+  .filters-grid { grid-template-columns: 1fr 1fr; }
   .versions { grid-template-columns: 1fr; max-height: 55vh; }
+  #finder summary .hint { display: block; }
 
-  /* kartica ponude: slika + tekst, cijena u donjem redu */
-  .offer { grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; padding: 12px; margin-bottom: 10px; }
-  .offer img { width: 96px; height: 96px; }
-  .offer .title { font-size: 16px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-                  overflow: hidden; }
-  .offer .note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .offer .price { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-                  text-align: left; white-space: normal; border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
-  .offer .total { font-size: 24px; }
+  /* ponuda: manja slika, cijena u retku ispod teksta */
+  .offer { grid-template-columns: 64px minmax(0, 1fr); align-items: start; }
+  .offer img { width: 64px; height: 64px; }
+  .offer .price { grid-column: 2; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+                  white-space: normal; }
   .offer .breakdown { text-align: right; }
 
-  /* praćenje i postavke: polja jedno ispod drugog */
-  .stack-on-mobile > input, .stack-on-mobile > button { flex: 1 1 100%; }
-  .watch { flex-direction: column; align-items: stretch; }
-  .health { flex-direction: column; align-items: flex-start; gap: 2px; }
-  #tab-settings .row > input, #tab-settings .row > button { flex: 1 1 100%; }
+  /* praćenje i postavke: polja i gumbi jedno ispod drugog */
+  .row > input:not([type="checkbox"]), .row > button { flex: 1 1 100%; }
+  .watch { align-items: flex-start; }
+  .health { flex-direction: column; align-items: flex-start; gap: 0; }
 }

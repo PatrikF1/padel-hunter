@@ -29,6 +29,8 @@ REASON_OTHER_BRAND = "other_brand"
 REASON_MISSING_WORDS = "missing_words"
 REASON_OTHER_MODEL_NUMBER = "other_model_number"
 REASON_OTHER_YEAR = "other_year"
+REASON_OTHER_SPORT = "other_sport"
+REASON_NO_CONTEXT = "no_context"
 
 # ---------- rječnici (normalizirano: mala slova, bez dijakritika) ----------
 BRANDS = {
@@ -76,6 +78,16 @@ MIN_RACKET_PRICE = 15.0      # EUR - ispod ovoga nijedan pravi reket (ni rabljen
 RACKET = {"pala", "palas", "reket", "reketi", "racket", "racquet", "raqueta", "raquette", "schlager",
           "padelschlager", "rakieta", "racchetta", "paddle"}
 PACK = {"pack", "paket", "set", "kit", "bundle"}
+# torbe: naslov s torbom je reket samo ako je to paket ("Pala X + Paletero Y", "reket sa torbom").
+# Riječ "racket" tu ne pomaže - "Racket Bag" je torba.
+BAGS = {"paletero", "paleteros", "bolsa", "mochila", "bag", "backpack", "torba", "ruksak", "sac", "tasche", "borsa",
+        "thermobag", "racketbag", "padelbag", "padeltasche", "schlagertasche", "duffle"}
+BUNDLE_WORDS = {"con", "with", "mit", "avec", "sa", "incl", "inkl"}
+# drugi sportovi s istim nazivima modela (Head Extreme Pro je i teniski i pickleball reket)
+OTHER_SPORTS = {"pickleball", "squash", "badminton", "beach", "frescobol"}
+TENNIS = {"tennis", "tenis", "tennisschlager"}   # odbacuje se samo ako se nigdje ne spominje padel
+TEST_RACKET = {"test"}  # "Pala de TEST" - korišteni testni reket koji se prodaje: prikazuje se kao varijanta
+NOT_YEAR_BEFORE = {"k", "mm", "g", "gr", "h", "cm"}  # "18K", "38 mm", "24 h" - broj ispred nije godina
 # testni reketi za posudbu (npr. Padel-Point "Testschläger") - ne prodaju se
 NOT_FOR_SALE = {"testschlager", "probeschlager", "testracket", "testracquet", "demo", "alquiler", "rental",
                 "verleih", "mietschlager", "najam"}
@@ -101,17 +113,29 @@ def tokens(text: str) -> list[str]:
     return words
 
 
+def _is_model_letter(word: str) -> bool:
+    """Jedno slovo ispred broja čini oznaku modela ('M27'), osim oznaka verzije ('Vertex 04 W 25' je godina)."""
+    return len(word) == 1 and word.isalpha() and word not in SHORT_VARIANTS
+
+
 def years(words: list[str]) -> set[int]:
-    """2024 -> 2024;  dvoznamenkasti broj iza broja modela ('Vertex 04 25', '26V') -> 2025 / 2026."""
-    found, previous_is_number = set(), False
-    for word in words:
-        if word.isdigit():
-            n = int(word)
-            if 2015 <= n <= 2035:
-                found.add(n)
-            elif previous_is_number and 15 <= n <= 35:
-                found.add(2000 + n)
-        previous_is_number = word.isdigit()
+    """2024 -> 2024. Dvoznamenkasta godina: 'Vertex 04 25', 'Hack 03 Comfort 24', 'Tour Final 26V' -> 2025/2024/2026.
+    Nije godina: '18K' / '24K' (karbon), '38 mm', 'M27' (oznaka modela iza jednog slova)."""
+    found = set()
+    for i, word in enumerate(words):
+        if not word.isdigit():
+            continue
+        n = int(word)
+        previous = words[i - 1] if i else ""
+        following = words[i + 1] if i + 1 < len(words) else ""
+        if 2015 <= n <= 2035:
+            found.add(n)
+        elif following in NOT_YEAR_BEFORE:
+            continue
+        elif previous.isdigit() and 15 <= n <= 35:      # odmah iza broja modela
+            found.add(2000 + n)
+        elif 20 <= n <= 35 and len(word) == 2 and not _is_model_letter(previous):
+            found.add(2000 + n)
     return found
 
 
@@ -119,14 +143,17 @@ def years(words: list[str]) -> set[int]:
 @dataclass
 class WantedRacket:
     """Rastavljen upit. Primjer za 'Adidas Metalbone CTRL 3.4 2025':
-    brand='adidas', model_words=['metalbone','ctrl','3','4'], model_numbers=[('ctrl','3')], years={2025}"""
+    brand='adidas', model_words=['metalbone','ctrl','3','4'], model_numbers=[('ctrl','3.4')], years={2025}"""
     raw: str
     words: list[str]                      # sve normalizirane riječi upita
     brand: str | None                     # prvi poznati brend iz upita
     model_words: list[str]                # riječi koje MORAJU biti u oglasu (bez brenda, godine, "padel reket")
-    model_numbers: list[tuple[str, str]]  # broj iza riječi mora biti točan: ("vertex", "4") -> Vertex 04, ne 03
+    model_numbers: list[tuple[str, str]]  # broj iza riječi mora biti točan: ("vertex", "4") -> Vertex 04, ne 03;
+                                          # decimala je dio broja: ("v", "2") nije V2.5
     years: set[int]
     version_words: set[str] = field(default_factory=set)  # oznake verzija tog modela iz kataloga (puni engine)
+    # broj generacije -> godine, iz kataloga (puni engine): {("3", "0"): {2026}} za 'Technical Viper 3.0'
+    generations: dict[tuple[str, ...], set[int]] = field(default_factory=dict)
 
     @property
     def family(self) -> str:
@@ -139,7 +166,8 @@ def parse_query(query: str) -> WantedRacket:
     query_years = years(words)
     year_words = {str(y) for y in query_years} | {str(y - 2000) for y in query_years}
     model_words = [w for w in words if w not in year_words and w not in BRANDS and w not in STOPWORDS]
-    model_numbers = [(model_words[i - 1], model_words[i]) for i in range(1, len(model_words))
+    model_numbers = [(model_words[i - 1], _number_after(model_words, model_words[i - 1]))
+                     for i in range(1, len(model_words))
                      if model_words[i].isdigit() and not model_words[i - 1].isdigit()]
     return WantedRacket(raw=query, words=words, brand=next((w for w in words if w in BRANDS), None),
                         model_words=model_words, model_numbers=model_numbers, years=query_years)
@@ -159,18 +187,31 @@ def _is_year(word: str) -> bool:
 
 
 def _number_after(words: list[str], word: str) -> str | None:
-    """Broj modela iza riječi ('vertex 04' -> '4'). Godina nije broj modela ('metalbone 2024' -> None)."""
-    if word in words:
-        i = words.index(word)
-        return next((w for w in words[i + 1:i + 3] if w.isdigit() and not _is_year(w)), None)
+    """Broj modela iza riječi: 'vertex 04' -> '4', 'bela pro v2.5' -> '2.5' (decimala je dio broja).
+    Godina nije broj modela ('metalbone 2024' -> None, 'vertex 04 25' -> '4')."""
+    if word not in words:
+        return None
+    start = words.index(word) + 1
+    for i in range(start, min(start + 2, len(words))):
+        if words[i].isdigit() and not _is_year(words[i]):
+            decimal = words[i + 1] if i + 1 < len(words) else ""
+            is_decimal = len(words[i]) == 1 and len(decimal) == 1 and decimal.isdigit()  # '3 4', ne 'AT10 12K'
+            return f"{words[i]}.{decimal}" if is_decimal else words[i]
     return None
 
 
-def _reject_not_racket(title_words: set[str], is_pack: bool, price: float | None) -> MatchResult | None:
+def _reject_not_racket(title_words: set[str], title_only: set[str], is_pack: bool, price: float | None
+                       ) -> MatchResult | None:
+    """title_words = naslov + kategorija trgovine; title_only = samo naslov."""
     if test := title_words & NOT_FOR_SALE:
         return MatchResult(NO_MATCH, "testni reket / najam: " + ", ".join(sorted(test)), REASON_NOT_FOR_SALE)
+    sports = title_only & OTHER_SPORTS or ("padel" not in title_words and title_only & TENNIS)
+    if sports:
+        return MatchResult(NO_MATCH, "drugi sport: " + ", ".join(sorted(sports)), REASON_OTHER_SPORT)
     if price is not None and price < MIN_RACKET_PRICE:
         return MatchResult(NO_MATCH, f"prejeftino za reket ({price:.2f} €) - vjerojatno oprema", REASON_TOO_CHEAP)
+    if (bags := title_only & BAGS) and not is_pack:
+        return MatchResult(NO_MATCH, "torba: " + ", ".join(sorted(bags)), REASON_ACCESSORY)
     accessories = title_words & ACCESSORY
     if accessories and not (title_words & RACKET) and not is_pack:
         return MatchResult(NO_MATCH, "oprema: " + ", ".join(sorted(accessories)), REASON_ACCESSORY)
@@ -186,6 +227,15 @@ def _reject_brand(wanted: WantedRacket, title_words: set[str]) -> MatchResult | 
         if other:
             return MatchResult(NO_MATCH, "drugi brend: " + ", ".join(sorted(other)), REASON_OTHER_BRAND)
     return None
+
+
+def _reject_no_context(wanted: WantedRacket, words: set[str]) -> MatchResult | None:
+    """Oglasnici prodaju sve: 'SanDisk Extreme Pro' nije Head Extreme Pro. Oglas mora spomenuti brend
+    iz upita ili padel/reket (u naslovu ili opisu). Trgovine s reketima to ne trebaju - brend im je često
+    samo u zasebnom polju."""
+    if words & (RACKET | {"padel"}) or (wanted.brand in words if wanted.brand else words & BRANDS):
+        return None
+    return MatchResult(NO_MATCH, "ne spominje brend ni padel/reket", REASON_NO_CONTEXT)
 
 
 def _reject_model(wanted: WantedRacket, words: list[str]) -> MatchResult | None:
@@ -209,22 +259,25 @@ def _extra_versions(wanted: WantedRacket, words: list[str]) -> set[str]:
     return found
 
 
-def _other_generation(wanted: WantedRacket, words: list[str]) -> str | None:
-    """Upit 'Metalbone 2026' (godina, bez broja) vs oglas 'Metalbone 3.3' -> druga generacija (2024).
-    Vrijedi samo kad upit ima godinu, a nema nikakav broj modela (inače to provjerava _reject_model)."""
-    if not wanted.years or not wanted.family or any(w.isdigit() for w in wanted.model_words):
-        return None
-    if wanted.family not in words:
-        return None
-    i = words.index(wanted.family)
-    following = words[i + 1] if i + 1 < len(words) else ""
-    return f"{wanted.family} {following}" if following.isdigit() and int(following) < 15 else None
+def generation(wanted: WantedRacket, words: list[str]) -> tuple[str, ...]:
+    """Broj generacije iza naziva modela: 'Technical Viper 3.0 Lebron' -> ('3', '0'), 'Metalbone 3.3' -> ('3', '3').
+    Prazno ako ga nema ili ako upit već sadrži broj modela (tada broj provjerava _reject_model)."""
+    present = [i for i, w in enumerate(words) if w in wanted.model_words]
+    if not present or any(w.isdigit() for w in wanted.model_words):
+        return ()
+    found = []
+    for word in words[max(present) + 1:][:2]:
+        if not (word.isdigit() and int(word) < 15):
+            break
+        found.append(word)
+    return tuple(found)
 
 
 # ---------- javno ----------
 def match(wanted: WantedRacket, title: str, category: str = "", details: str = "",
-          price: float | None = None) -> MatchResult:
+          price: float | None = None, marketplace: bool = False) -> MatchResult:
     """Koliko oglas odgovara traženom reketu. price (EUR, bez dostave) pomaže razlikovati reket od opreme.
+    marketplace=True (oglasnici): oglas mora spomenuti i brend ili padel/reket, vidi _reject_no_context.
 
     details = opis/atributi sa stranice oglasa (dubinska provjera). Opis smije DOPUNITI naslov
     (naslov 'Adidas Metalbone', opis '... Metalbone 3.3 2024'), ali torba/brend se gledaju samo u naslovu,
@@ -232,10 +285,11 @@ def match(wanted: WantedRacket, title: str, category: str = "", details: str = "
     title_words = tokens(title)
     all_words = title_words + tokens(details)
     title_and_category = set(title_words) | set(tokens(category))
-    is_pack = bool(title_and_category & PACK)
+    is_pack = bool(title_and_category & PACK) or " + " in title or bool(set(title_words) & BUNDLE_WORDS)
 
-    rejected = (_reject_not_racket(title_and_category, is_pack, price) or _reject_brand(wanted, title_and_category)
-                or _reject_model(wanted, all_words))
+    rejected = (_reject_not_racket(title_and_category, set(title_words), is_pack, price)
+                or _reject_brand(wanted, title_and_category) or _reject_model(wanted, all_words)
+                or (marketplace and _reject_no_context(wanted, title_and_category | set(all_words))))
     if rejected:
         return rejected
 
@@ -253,19 +307,37 @@ def match(wanted: WantedRacket, title: str, category: str = "", details: str = "
     if versions := _extra_versions(wanted, all_words):
         score = VARIANT
         notes.append("varijanta: " + ", ".join(sorted(versions)))
-    if generation := _other_generation(wanted, all_words):
-        score = VARIANT
-        notes.append(f"druga generacija: {generation}")
+    # upit 'Technical Viper 2025' (godina, bez broja) vs oglas 'Technical Viper 3.0' bez godine:
+    # katalog zna da je 3.0 model 2026 -> odbaci; da je 2.5 model 2025 -> godina potvrđena; ne zna -> varijanta
+    if score == YEAR_MISSING and (number := generation(wanted, all_words)):
+        label = ".".join(number)
+        known_years = wanted.generations.get(number)
+        if known_years and known_years & wanted.years:
+            score, notes = EXACT, [f"generacija {label} = {max(known_years & wanted.years)} prema katalogu"]
+        elif known_years:
+            return MatchResult(NO_MATCH, f"druga generacija: {label} ({', '.join(map(str, sorted(known_years)))})",
+                               REASON_OTHER_YEAR)
+        else:
+            score = VARIANT
+            notes.append(f"generacija {label}, godina nije potvrđena")
+    if set(title_words) & TEST_RACKET:
+        score = min(score, VARIANT)
+        notes.append("testni (korišteni) reket")
     if is_pack:
         notes.append("paket")
     return MatchResult(score, "; ".join(notes))
 
 
 def worth_opening(wanted: WantedRacket, title: str, result: MatchResult) -> bool:
-    """Isplati li se otvoriti oglas i pročitati opis: naslov spominje model, ali mu fali verzija/broj/godina."""
-    if not wanted.family or wanted.family not in tokens(title):
+    """Isplati li se otvoriti oglas i pročitati opis: naslov spominje model, ali mu fali verzija/broj/godina
+    ili ne spominje brend ni padel. Oglasi koji ne liče na reket se ne otvaraju ('Dacia Jogger Extreme'):
+    broj otvaranja je ograničen (Vinted blokira), pa ih ne trošimo na tuđe proizvode."""
+    words = set(tokens(title))
+    if not wanted.family or wanted.family not in words:
         return False
-    return result.score == YEAR_MISSING or result.reason == REASON_MISSING_WORDS
+    if result.score == YEAR_MISSING or result.reason == REASON_NO_CONTEXT:
+        return True
+    return result.reason == REASON_MISSING_WORDS and bool(words & (RACKET | {"padel", wanted.brand}))
 
 
 def looks_new(title: str) -> bool:

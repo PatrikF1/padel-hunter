@@ -35,3 +35,5 @@ class Source:
     enrich: EnrichFn | None = None    # opcionalno: dodatni podaci (npr. stvarna dostava) za pogođene ponude
     details: DetailsFn | None = None  # opcionalno: tekst oglasa (opis, atributi) za dubinsku provjeru modela;
                                       # smije ažurirati offer.condition ako stranica oglasa navodi stanje
+    details_max: int = 20     # najviše NOVIH opisa po pretrazi (već pročitani se pamte 24 h i ne broje se)
+    timeout: int = 15         # s - koliko pretraga čeka izvor; više samo izvorima s budžetom zahtjeva (Vinted)

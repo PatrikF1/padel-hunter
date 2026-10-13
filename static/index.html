@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Padel Hunter</title>
-  <meta name="theme-color" content="#0f1115">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111315" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
@@ -15,11 +16,11 @@
 </head>
 <body>
 <header>
-  <h1>🎾 Padel Hunter</h1>
+  <h1>Padel Hunter</h1>
   <nav>
-    <button data-tab="search" class="active"><span class="icon">🔍</span><span class="label">Pretraga</span></button>
-    <button data-tab="watch"><span class="icon">🔔</span><span class="label">Praćenje <span id="watch-count"></span></span></button>
-    <button data-tab="settings"><span class="icon">⚙️</span><span class="label">Postavke <span id="tg-dot" class="dot"></span></span></button>
+    <button data-tab="search" class="active">Pretraga</button>
+    <button data-tab="watch">Praćenje <span id="watch-count"></span></button>
+    <button data-tab="settings">Postavke <span id="tg-dot" class="dot"></span></button>
   </nav>
 </header>
 
@@ -34,7 +35,7 @@
     </form>
 
     <details id="finder">
-      <summary>🎯 Odaberi točnu verziju <span class="hint"></span></summary>
+      <summary>Odaberi točnu verziju <span class="hint"></span></summary>
       <div class="filters-grid"></div>
       <div class="row">
         <input id="v-text" placeholder="naziv sadrži, npr. ctrl 3.4">
@@ -64,8 +65,14 @@
         <option value="match">Točnost podudaranja</option>
         <option value="source">Izvor A–Ž</option>
       </select>
-      <input type="number" id="f-max" placeholder="max €" min="0" inputmode="decimal" aria-label="Najviša cijena">
-      <button id="watch-btn" class="ghost" hidden>🔔 Prati</button>
+      <select id="f-source" aria-label="Izvor"></select>
+      <div class="range">
+        <input type="number" id="f-min" placeholder="od €" min="0" inputmode="decimal" aria-label="Najniža ukupna cijena">
+        <input type="number" id="f-max" placeholder="do €" min="0" inputmode="decimal" aria-label="Najviša ukupna cijena">
+      </div>
+      <label><input type="checkbox" id="f-deals"> samo apsurdno jeftino</label>
+      <button id="f-reset" type="button" class="ghost" hidden>Poništi filtere</button>
+      <button id="watch-btn" class="ghost" hidden>Prati model</button>
     </div>
     <details id="sources-box">
       <summary id="sources-sum" class="hint">Izvori</summary>
@@ -77,7 +84,7 @@
 
   <!-- PRAĆENJE -->
   <section id="tab-watch" class="tab">
-    <form id="watch-form" class="row stack-on-mobile">
+    <form id="watch-form" class="row">
       <input id="w-q" placeholder="Model koji pratiš">
       <input id="w-max" type="number" min="0" placeholder="javi ispod € (ukupno)">
       <label><input type="checkbox" id="w-used" checked> i rabljeno</label>
@@ -92,7 +99,7 @@
   <!-- POSTAVKE -->
   <section id="tab-settings" class="tab">
     <section id="mobile-box" hidden>
-      <h2>📱 Mobitel</h2>
+      <h2>Mobitel</h2>
       <div class="mobile">
         <div id="mobile-qr" class="qr"></div>
         <ol class="steps">
@@ -122,7 +129,7 @@
     </div>
     <p id="tg-status" class="hint"></p>
 
-    <h2>eBay API <span class="hint">(preporučeno - bez njega eBay povremeno blokira pretragu)</span></h2>
+    <h2>eBay API <span class="hint">preporučeno, bez njega eBay povremeno blokira pretragu</span></h2>
     <ol class="steps">
       <li>Prijavi se na <b>developer.ebay.com</b> (besplatno) → <b>Application Keys</b> → <b>Production</b> → <b>Create a keyset</b>.</li>
       <li>Kopiraj <b>App ID (Client ID)</b> i <b>Cert ID (Client Secret)</b> ovdje.</li>

@@ -48,9 +48,9 @@ def test_rank_exact_first_then_cheapest():
     assert engine.rank([a, b, c]) == [c, a, b]
 
 
-def test_search_terms_strip_year_and_add_brandless_for_markets():
+def test_search_terms_strip_year_and_add_model_only_for_markets():
     assert engine.search_terms("Bullpadel Vertex 04 2024", "shop") == ["Bullpadel Vertex 04"]
-    assert engine.search_terms("Bullpadel Vertex 04 2024", "market") == ["Bullpadel Vertex 04", "Vertex 04", "Vertex"]
+    assert engine.search_terms("Bullpadel Vertex 04 2024", "market") == ["Bullpadel Vertex 04", "Vertex"]
     assert engine.search_terms("nox at10", "market") == ["nox at10", "at10"]  # bez duplikata
     assert engine.search_terms("padel reket Nox AT10", "shop") == ["Nox AT10"]
 
@@ -58,10 +58,10 @@ def test_search_terms_strip_year_and_add_brandless_for_markets():
 def test_polite_gate_limits_parallel_requests_and_spacing():
     import asyncio
     import time
-    from core.http import _Gate
+    from core.http import Limit, _Gate
 
     async def run():
-        gate, active, peak, starts = _Gate(parallel=2, spacing=0.05), 0, 0, []
+        gate, active, peak, starts = _Gate(Limit(parallel=2, spacing=0.05)), 0, 0, []
 
         async def job():
             nonlocal active, peak

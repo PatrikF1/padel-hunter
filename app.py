@@ -91,7 +91,7 @@ async def search(q: str, fresh: int = 0):
         async for source, offers, error in engine.stream(query, use_cache=not fresh):
             status = engine.health[source.name]
             payload = {"source": source.name, "label": source.label, "ok": error is None,
-                       "error": status.error if error else "", "ms": status.ms,
+                       "error": status.error, "ms": status.ms,  # i izvor koji radi može imati napomenu
                        "offers": [o.to_dict() for o in offers]}
             yield f"event: source\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
         yield f"event: done\ndata: {json.dumps({'ms': int((time.time() - started) * 1000)})}\n\n"

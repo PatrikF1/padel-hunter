@@ -124,7 +124,7 @@ function initCatalog({ onPick }) {
 
   function versionCard(racket) {
     const specs = [racket.year, ...SPECS_ON_CARD.map((key) => valuesOf(racket, key).map(translate).join(", "))]
-      .filter(Boolean).map((spec) => `<span class="spec">${escapeHtml(spec)}</span>`).join("");
+      .filter(Boolean).map((spec) => `<span>${escapeHtml(spec)}</span>`).join("");
     const ratings = RATING_FILTERS.filter((filter) => (racket.ratings || {})[filter.key] != null)
       .map((filter) => `${filter.label} ${racket.ratings[filter.key]}`).join(" · ");
     const price = racket.price

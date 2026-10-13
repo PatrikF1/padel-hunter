@@ -74,7 +74,10 @@ async def details(offer: Offer) -> str:
 
 
 PAGE_SIZE = 96
-MAX_PAGES = 3  # Vinted brzo blokira, pa najviše ~290 oglasa po upitu
+# Vinted blokira (429) iznad ~20 zahtjeva u minuti (budžet je u core/http.py), pa jedna pretraga smije malo:
+MAX_PAGES = 2    # najviše ~190 najnovijih oglasa po upitu
+DETAILS_MAX = 4  # novih opisa po pretrazi; ostali dođu na red u sljedećoj (opisi se pamte 24 h)
+TIMEOUT = 40     # s - kad je budžet potrošen (više pretraga zaredom), zahtjevi čekaju red umjesto da padnu
 
 
 async def search(query: str) -> list[Offer]:
@@ -87,4 +90,4 @@ async def search(query: str) -> list[Offer]:
         return await fetch_pages(page, full_page=PAGE_SIZE, max_pages=MAX_PAGES)
 
 
-SOURCES = [Source(NAME, LABEL, "market", search, details=details)]
+SOURCES = [Source(NAME, LABEL, "market", search, details=details, details_max=DETAILS_MAX, timeout=TIMEOUT)]
