@@ -9,7 +9,8 @@ from sources import SOURCES
 from sources.base import Source
 
 from . import catalog
-from .matcher import BRANDS, STOPWORDS, VARIANT, YEAR_MISSING, match, parse_query, tokens
+from .matcher import (BRANDS, NOTE_FROM_DETAILS, STOPWORDS, VARIANT, YEAR_MISSING, match, parse_query, tokens,
+                      worth_details)
 from .models import Offer
 
 SOURCE_TIMEOUT = 15                      # s - spori izvor ne smije blokirati ostale
@@ -17,8 +18,12 @@ CACHE_TTL = {"market": 45, "shop": 600}  # s
 DEAL_THRESHOLD = 0.30                    # 30 % ispod referentne cijene = apsurdno
 EXACT_MIN = YEAR_MISSING                 # od ove ocjene ponuda se računa kao točan model
 SIMILAR_MIN = VARIANT                    # od ove ocjene se prikazuje kao varijanta
+DETAILS_MAX = 30                         # najviše oglasa po izvoru koje otvaramo radi opisa
+DETAILS_PARALLEL = 8
+DETAILS_TTL = 24 * 3600                  # opis oglasa se rijetko mijenja
 
 _cache: dict[tuple[str, str], tuple[float, list[Offer]]] = {}
+_details_cache: dict[str, tuple[float, str, str]] = {}  # url -> (vrijeme, tekst, stanje)
 health: dict[str, dict] = {
     s.name: {"label": s.label, "kind": s.kind, "ok": None, "last_ok": None, "error": "", "fails": 0, "n": 0, "ms": 0}
     for s in SOURCES
@@ -33,16 +38,19 @@ def _is_only(word: str, vocab: set[str]) -> bool:
 
 def search_terms(q: str, kind: str) -> list[str]:
     """Upit bez godine i riječi poput 'padel reket' (to provjerava matcher, a trgovine ih često ne pišu).
-    Oglasnicima šaljemo i verziju bez brenda jer ljudi često napišu samo 'Vertex 04'."""
+
+    Oglasnicima šaljemo još dvije šire verzije, jer ljudi pišu nepotpune naslove:
+      - bez brenda:        'Metalbone CTRL 3.4'
+      - samo model:        'Metalbone'  (verziju onda potvrđuje opis oglasa - vidi run_source)"""
     pq = parse_query(q)
     year_tokens = {str(y) for y in pq["years"]} | {str(y - 2000) for y in pq["years"]}
     words = [w for w in q.split() if not _is_only(w, year_tokens | STOPWORDS)]
     terms = [" ".join(words) or q]
-    if kind == "market" and pq["brand"] and pq["core"]:
+    if kind == "market" and pq["core"]:
         without_brand = " ".join(w for w in words if not _is_only(w, BRANDS))
-        if without_brand and without_brand != terms[0]:
-            terms.append(without_brand)
-    return terms
+        family = next((w for w in words if not _is_only(w, BRANDS)), "")
+        terms += [t for t in (without_brand, family) if t and len(t) >= 3]
+    return list(dict.fromkeys(terms))  # bez duplikata, redoslijed ostaje
 
 
 # ---------- dohvat ----------
@@ -55,8 +63,34 @@ async def _fetch(src: Source, term: str, use_cache: bool) -> list[Offer]:
     return copy.deepcopy(hit[1])  # enrich/match mijenjaju ponude - cache mora ostati čist
 
 
+async def _details(src: Source, o: Offer) -> str:
+    hit = _details_cache.get(o.url)
+    if hit and time.time() - hit[0] < DETAILS_TTL:
+        o.condition = hit[2]
+        return hit[1]
+    text = await src.details(o)
+    _details_cache[o.url] = (time.time(), text, o.condition)
+    return text
+
+
+async def deep_check(src: Source, pq: dict, offers: list[Offer]) -> None:
+    """Oglasi čiji naslov spominje model, ali ne i verziju/godinu (npr. samo 'Adidas Metalbone'):
+    otvori oglas i provjeri opis. Ako opis potvrdi točnu verziju, ponuda ulazi u rezultate."""
+    todo = [o for o in offers if worth_details(pq, o.title, o.match, o.match_note)][:DETAILS_MAX]
+    sem = asyncio.Semaphore(DETAILS_PARALLEL)
+
+    async def one(o: Offer):
+        async with sem:
+            text = await _details(src, o)
+        score, note = match(pq, o.title, o.extra.get("category", ""), details=text)
+        if score > o.match:
+            o.match, o.match_note = score, "; ".join(filter(None, [NOTE_FROM_DETAILS, note]))
+
+    await asyncio.gather(*(one(o) for o in todo), return_exceptions=True)  # opis je bonus, ne smije srušiti izvor
+
+
 async def run_source(src: Source, q: str, pq: dict, use_cache: bool = True) -> list[Offer]:
-    """Dohvati, prepoznaj model i (ako izvor to podržava) dohvati stvarnu dostavu."""
+    """Dohvati, prepoznaj model (naslov, pa po potrebi opis oglasa) i dohvati stvarnu dostavu."""
     t0 = time.time()
     h = health[src.name]
     try:
@@ -64,6 +98,11 @@ async def run_source(src: Source, q: str, pq: dict, use_cache: bool = True) -> l
         offers = list({o.key: o for batch in batches for o in batch}.values())
         for o in offers:
             o.match, o.match_note = match(pq, o.title, o.extra.get("category", ""))
+        if src.details:
+            try:
+                await asyncio.wait_for(deep_check(src, pq, offers), SOURCE_TIMEOUT)
+            except asyncio.TimeoutError:
+                pass  # što je stiglo provjeriti, provjereno je
         hits = [o for o in offers if o.match >= SIMILAR_MIN]
         if src.enrich and hits:
             await asyncio.wait_for(src.enrich(hits), SOURCE_TIMEOUT)

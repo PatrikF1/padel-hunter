@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Padel Hunter</title>
+  <meta name="theme-color" content="#0f1115">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -66,6 +71,22 @@
 
   <!-- POSTAVKE -->
   <section id="tab-settings" class="tab">
+    <section id="mobile-box" hidden>
+      <h2>📱 Mobitel</h2>
+      <div class="mobile">
+        <div id="mobile-qr" class="qr"></div>
+        <ol class="steps">
+          <li>Mobitel mora biti na <b>istoj Wi-Fi mreži</b> kao ovo računalo.</li>
+          <li>Skeniraj QR kod kamerom mobitela. Mobitel zapamti ključ, pa sljedeći put samo otvori adresu.</li>
+          <li>U pregledniku mobitela odaberi <b>Dodaj na početni zaslon</b> i dobit ćeš ikonu kao aplikacija.</li>
+          <li>Ako se ne otvara, Windows je možda blokirao pristup: dopusti Pythonu "Privatne mreže" u
+            vatrozidu (prozor se pojavi pri prvom pokretanju).</li>
+        </ol>
+      </div>
+      <p class="hint">Adresa: <code id="mobile-url"></code><br>Izvan kuće: najjednostavnije je instalirati
+        <b>Tailscale</b> na računalo i mobitel (besplatno), pa ista adresa radi s bilo kojeg mjesta.</p>
+    </section>
+
     <h2>Telegram obavijesti</h2>
     <ol class="steps">
       <li>U Telegramu otvori <b>@BotFather</b>, pošalji <code>/newbot</code> i prati upute.</li>

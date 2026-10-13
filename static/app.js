@@ -19,7 +19,7 @@ document.querySelectorAll("nav button").forEach((btn) => btn.addEventListener("c
   btn.classList.add("active");
   $(`#tab-${btn.dataset.tab}`).classList.add("active");
   if (btn.dataset.tab === "watch") loadWatches();
-  if (btn.dataset.tab === "settings") { loadSettings(); loadHealth(); }
+  if (btn.dataset.tab === "settings") { loadSettings(); loadHealth(); loadMobile(); }
 }));
 
 // ---------- pretraga ----------
@@ -216,6 +216,15 @@ $("#tg-test").addEventListener("click", async () => {
   const r = await api.send("/api/telegram/test", "POST");
   $("#tg-status").textContent = r.ok ? "Poruka poslana ✅" : `Nije uspjelo: ${r.error}`;
 });
+
+async function loadMobile() {
+  const r = await fetch("/api/mobile");
+  if (!r.ok) return;  // na mobitelu se QR ne prikazuje
+  const m = await r.json();
+  $("#mobile-box").hidden = false;
+  $("#mobile-qr").innerHTML = m.qr;  // SVG generira naš server (segno), nije vanjski sadržaj
+  $("#mobile-url").textContent = m.url;
+}
 
 async function loadHealth() {
   const h = await api.get("/api/health");

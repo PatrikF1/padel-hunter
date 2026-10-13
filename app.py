@@ -1,4 +1,6 @@
-"""Padel Hunter - pokretanje: start.bat  (ili: .venv\\Scripts\\python app.py)  ->  http://127.0.0.1:8777"""
+"""Padel Hunter - pokretanje: start.bat  (ili: .venv\\Scripts\\python app.py)  ->  http://127.0.0.1:8777
+
+Mobitel na istoj Wi-Fi mreži: Postavke -> QR kod (adresa s tajnim ključem)."""
 import asyncio
 import json
 import logging
@@ -6,18 +8,20 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import catalog, db, engine, telegram, watcher
+from core import access, catalog, db, engine, telegram, watcher
 from core.matcher import parse_query
 from sources import SOURCES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 STATIC = Path(__file__).parent / "static"
+HOST, PORT = "0.0.0.0", 8777  # 0.0.0.0 = dostupno i mobitelu na kućnoj mreži (uz tajni ključ, vidi core/access.py)
 
 
 @asynccontextmanager
@@ -31,6 +35,22 @@ async def lifespan(_app):
 
 app = FastAPI(title="Padel Hunter", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.middleware("http")
+async def require_key(request: Request, call_next):
+    """Računalo uvijek smije; ostali uređaji samo s ključem (?key=... jednom, zatim kolačić)."""
+    host = request.client.host if request.client else None
+    query_key = request.query_params.get("key")
+    if not access.allowed(host, request.cookies.get(access.COOKIE), query_key):
+        return PlainTextResponse("Pristup zabranjen - skeniraj QR kod iz Postavki na računalu.", status_code=403)
+    if query_key:  # zapamti ključ i makni ga iz adrese
+        params = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "key"])
+        target = request.url.path + ("?" + params if params else "")
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(access.COOKIE, query_key, max_age=365 * 24 * 3600, httponly=True, samesite="lax")
+        return response
+    return await call_next(request)
 
 
 @app.get("/")
@@ -75,6 +95,16 @@ def get_catalog():
 @app.post("/api/catalog/refresh")
 async def refresh_catalog():
     return {"count": await catalog.refresh()}
+
+
+# ---- mobitel ----
+@app.get("/api/mobile")
+def mobile(request: Request):
+    """Adresa i QR kod za mobitel - samo za računalo na kojem app radi."""
+    if not access.is_local(request.client.host if request.client else None):
+        raise HTTPException(403, "samo s računala")
+    url = access.mobile_url(PORT)
+    return {"url": url, "qr": access.qr_svg(url)}
 
 
 @app.get("/api/health")
@@ -154,4 +184,5 @@ async def tg_test():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8777, log_level="warning")
+    print(f"Padel Hunter radi:  http://127.0.0.1:{PORT}   (mobitel: QR kod u Postavkama)")
+    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")

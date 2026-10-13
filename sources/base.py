@@ -10,6 +10,7 @@ from core.models import Offer
 
 SearchFn = Callable[[str], Awaitable[list[Offer]]]
 EnrichFn = Callable[[list[Offer]], Awaitable[None]]
+DetailsFn = Callable[[Offer], Awaitable[str]]
 
 
 @dataclass(frozen=True)
@@ -18,4 +19,6 @@ class Source:
     label: str                # za prikaz, npr. "Vinted"
     kind: str                 # "market" = oglasnik (provjera svake ~90 s) | "shop" = trgovina (svakih 15 min)
     search: SearchFn          # upit -> sve ponude (matcher filtrira kasnije)
-    enrich: EnrichFn | None = None  # opcionalno: dohvati dodatne podatke (npr. stvarnu dostavu) samo za pogođene ponude
+    enrich: EnrichFn | None = None    # opcionalno: dodatni podaci (npr. stvarna dostava) za pogođene ponude
+    details: DetailsFn | None = None  # opcionalno: tekst oglasa (opis, atributi) za dubinsku provjeru modela;
+                                      # smije ažurirati offer.condition ako stranica oglasa navodi stanje

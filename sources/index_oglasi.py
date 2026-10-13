@@ -42,6 +42,16 @@ def parse(data: dict) -> list[Offer]:
     return offers
 
 
+async def details(offer: Offer) -> str:
+    async with session() as s:
+        await s.get(BASE)  # kolačić potreban za API
+        r = await s.get(BASE + "/api/aditem/single-ad", params={"code": offer.id},
+                        headers={"accept": "application/json"})
+        r.raise_for_status()
+        ads = r.json().get("data") or [{}]
+    return ads[0].get("description") or ""
+
+
 async def search(query: str) -> list[Offer]:
     async with session() as s:
         await s.get(BASE)
@@ -52,4 +62,4 @@ async def search(query: str) -> list[Offer]:
         return parse(r.json())
 
 
-SOURCES = [Source(NAME, LABEL, "market", search)]
+SOURCES = [Source(NAME, LABEL, "market", search, details=details)]

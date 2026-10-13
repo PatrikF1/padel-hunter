@@ -38,6 +38,8 @@ VARIANTS = {
     "edition", "mx", "mexico", "master", "final", "premier", "geo", "legend", "luxury", "genius", "air",
     "vibe", "evo", "x", "s",
 }
+# česti tipfeleri oznaka verzija u oglasima (hdr = hrd, crtl = ctrl...) - i oni znače "druga verzija"
+VARIANTS |= {"hdr", "crtl", "cntrl", "contol", "hibrid", "hybird", "confort", "comfor"}
 SHORT_VARIANTS = {"w", "s", "x"}  # računaju se samo odmah iza broja modela ("Vertex 04 W")
 ACCESSORY = {
     "paletero", "paleteros", "bolsa", "mochila", "bag", "backpack", "torba", "ruksak", "sac", "tasche",
@@ -145,10 +147,30 @@ def _variants(q: dict, toks: list[str]) -> set[str]:
     return found
 
 
+def _other_generation(q: dict, toks: list[str]) -> str | None:
+    """Upit 'Metalbone 2026' (godina, bez broja) vs oglas 'Metalbone 3.3' -> to je druga generacija (2024).
+    Vrijedi samo kad upit ima godinu, a nema nikakav broj modela (inače to provjerava _reject_model)."""
+    if not q["years"] or not q["core"] or any(t.isdigit() for t in q["core"]):
+        return None
+    family = q["core"][0]
+    if family not in toks:
+        return None
+    i = toks.index(family)
+    got = toks[i + 1] if i + 1 < len(toks) else ""
+    return f"{family} {got}" if got.isdigit() and int(got) < 15 else None
+
+
 # ---------- javno ----------
-def match(q: dict, title: str, category: str = "") -> tuple[float, str]:
-    toks = tokens(title)
-    words = set(toks) | set(tokens(category))
+NOTE_FROM_DETAILS = "✓ potvrđeno iz opisa oglasa"
+
+
+def match(q: dict, title: str, category: str = "", details: str = "") -> tuple[float, str]:
+    """details = opis/atributi sa stranice oglasa (dubinska provjera). Opis smije DOPUNITI naslov
+    (npr. naslov 'Adidas Metalbone', opis '... Metalbone 3.3 2024'), ali torbe/brend se gledaju samo u naslovu,
+    a godina iz opisa samo potvrđuje (opis 'kupljen 2023' ne odbacuje oglas)."""
+    title_toks = tokens(title)
+    toks = title_toks + tokens(details)
+    words = set(title_toks) | set(tokens(category))
     is_pack = bool(words & PACK)
 
     reason = _reject_accessory(words, is_pack) or _reject_brand(q, words) or _reject_model(q, toks)
@@ -156,11 +178,11 @@ def match(q: dict, title: str, category: str = "") -> tuple[float, str]:
         return NO_MATCH, reason
 
     score, notes = EXACT, []
-    title_years = years(toks)
+    title_years = years(title_toks)
     if q["years"]:
         if title_years and not title_years & q["years"]:
             return NO_MATCH, "druga godina: " + ", ".join(map(str, sorted(title_years)))
-        if not title_years:
+        if not title_years and not years(tokens(details)) & q["years"]:
             score, notes = YEAR_MISSING, [NOTE_YEAR_MISSING]
     elif title_years:
         notes.append("godina " + ", ".join(map(str, sorted(title_years))))
@@ -168,9 +190,19 @@ def match(q: dict, title: str, category: str = "") -> tuple[float, str]:
     if variants := _variants(q, toks):
         score = VARIANT
         notes.append("varijanta: " + ", ".join(sorted(variants)))
+    if generation := _other_generation(q, toks):
+        score = VARIANT
+        notes.append(f"druga generacija: {generation}")
     if is_pack:
         notes.append("paket")
     return score, "; ".join(notes)
+
+
+def worth_details(q: dict, title: str, score: float, reason: str) -> bool:
+    """Isplati li se otvoriti oglas: naslov spominje model, ali mu fali verzija/broj/godina."""
+    if not q["core"] or q["core"][0] not in tokens(title):
+        return False
+    return score == YEAR_MISSING or (score == NO_MATCH and reason.startswith("nedostaje"))
 
 
 def looks_new(title: str) -> bool:

@@ -50,6 +50,6 @@ def test_rank_exact_first_then_cheapest():
 
 def test_search_terms_strip_year_and_add_brandless_for_markets():
     assert engine.search_terms("Bullpadel Vertex 04 2024", "shop") == ["Bullpadel Vertex 04"]
-    assert engine.search_terms("Bullpadel Vertex 04 2024", "market") == ["Bullpadel Vertex 04", "Vertex 04"]
-    assert engine.search_terms("nox at10", "market") == ["nox at10", "at10"]
+    assert engine.search_terms("Bullpadel Vertex 04 2024", "market") == ["Bullpadel Vertex 04", "Vertex 04", "Vertex"]
+    assert engine.search_terms("nox at10", "market") == ["nox at10", "at10"]  # bez duplikata
     assert engine.search_terms("padel reket Nox AT10", "shop") == ["Nox AT10"]

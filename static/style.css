@@ -73,7 +73,24 @@ select { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-
 .watch, .health { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px;
                   background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .watch a { color: var(--accent); }
+.mobile { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.qr svg { width: 200px; height: 200px; border-radius: 8px; }
+
+/* ---------- mobitel ---------- */
 @media (max-width: 560px) {
-  .offer { grid-template-columns: 48px 1fr; } .offer img { width: 48px; height: 48px; }
-  .offer .price { grid-column: 2; text-align: left; }
+  body { font-size: 14px; }
+  header { padding: 10px 12px; }
+  h1 { font-size: 16px; }
+  nav button { padding: 6px 8px; }
+  main { padding: 12px; }
+  input, select, button { font-size: 16px; }  /* iOS ne zumira polja od 16px */
+  #q, #w-q { flex-basis: 100%; }
+  .filters-grid { grid-template-columns: 1fr 1fr; }
+  .versions { grid-template-columns: 1fr; max-height: 360px; }
+  .offer { grid-template-columns: 56px 1fr; gap: 10px; padding: 10px; }
+  .offer img { width: 56px; height: 56px; }
+  .offer .price { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline;
+                  text-align: left; border-top: 1px solid var(--line); padding-top: 6px; white-space: normal; }
+  .filters label { font-size: 13px; }
+  .watch { flex-direction: column; align-items: stretch; }
 }

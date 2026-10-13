@@ -46,6 +46,34 @@ def parse(html: str) -> list[Offer]:
     return offers
 
 
+_PLUGINS = '{"plugins":[{"data":{"item_id"'
+
+
+def parse_details(html: str) -> str:
+    """Opis i atributi (marka, stanje...) sa stranice oglasa."""
+    payload = next_payload(html)
+    i = payload.find(_PLUGINS)
+    if i < 0:
+        return ""
+    plugins, _ = json.JSONDecoder().raw_decode(payload, i)
+    parts = []
+    for plugin in plugins["plugins"]:
+        data = plugin.get("data") or {}
+        if plugin.get("name") == "description":
+            parts.append(data.get("description") or "")
+        elif plugin.get("name") == "attributes":
+            parts += [f"{a['data'].get('title')}: {a['data'].get('value')}" for a in data.get("attributes", [])
+                      if isinstance(a.get("data"), dict)]
+    return "\n".join(p for p in parts if p)
+
+
+async def details(offer: Offer) -> str:
+    async with session() as s:
+        r = await s.get(offer.url)
+        r.raise_for_status()
+        return parse_details(text(r))
+
+
 async def search(query: str) -> list[Offer]:
     async with session() as s:
         r = await s.get(f"https://www.vinted.hr/catalog?search_text={quote(query)}&order=newest_first")
@@ -53,4 +81,4 @@ async def search(query: str) -> list[Offer]:
         return parse(text(r))
 
 
-SOURCES = [Source(NAME, LABEL, "market", search)]
+SOURCES = [Source(NAME, LABEL, "market", search, details=details)]

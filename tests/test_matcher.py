@@ -86,3 +86,46 @@ def test_looks_new():
 
 def test_stopwords_not_required():
     assert score("padel reket nox at10 genius 18k", "NOX AT10 GENIUS 18K 2024 AGUSTIN TAPIA") == 1.0
+
+
+def test_typo_variant_is_not_exact():
+    assert score("adidas metalbone 2026", "Adidas Metalbone HDR+") == 0.5
+
+
+# ---------- dubinska provjera (opis oglasa) ----------
+def test_description_confirms_version():
+    q = parse_query("adidas metalbone 3.3 2024")
+    assert match(q, "Adidas Metalbone")[0] == 0.0                      # samo naslov nije dovoljan
+    s, _ = match(q, "Adidas Metalbone", details="Prodajem Metalbone 3.3 iz 2024, malo korišten")
+    assert s == 1.0
+
+
+def test_description_reveals_other_version():
+    q = parse_query("adidas metalbone 3.3")
+    assert match(q, "Adidas Metalbone", details="Metalbone CTRL 3.3, okrugli oblik")[0] == 0.5
+
+
+def test_description_year_only_confirms_never_rejects():
+    q = parse_query("adidas metalbone 3.3 2024")
+    assert match(q, "Adidas Metalbone 3.3", details="kupljen 2023, malo korišten")[0] == 0.8
+
+
+def test_description_bag_mention_is_not_accessory():
+    q = parse_query("adidas metalbone 3.3")
+    assert match(q, "Adidas Metalbone 3.3", details="uz reket dolazi i torba")[0] == 1.0
+
+
+def test_worth_details():
+    from core.matcher import worth_details
+    q = parse_query("adidas metalbone 3.3 2024")
+    s, reason = match(q, "Adidas Metalbone")
+    assert worth_details(q, "Adidas Metalbone", s, reason)
+    s, reason = match(q, "Bullpadel Vertex 04")
+    assert not worth_details(q, "Bullpadel Vertex 04", s, reason)
+
+
+def test_other_generation_when_query_has_year_but_no_number():
+    assert score("adidas metalbone 2026", "Pala Adidas Metalbone 3.3 Ale Galán") == 0.5
+    assert score("adidas metalbone 2026", "Adidas Metalbone 2026 Ale Galán") == 1.0
+    assert score("adidas metalbone", "Adidas Metalbone 3.3") == 1.0          # bez godine: sve generacije
+    assert score("bullpadel vertex 04 2024", "Bullpadel Vertex 04 2024") == 1.0

@@ -42,3 +42,13 @@ def test_index_parse_builds_listing_url():
                       "category": "equipment-for-tennis", "images": [], "cityName": "Pula"}]}
     [o] = index_oglasi.parse(data)
     assert o.url == "https://www.index.hr/oglasi/sport/tenis/oglas/siux-fenix-pro-2026-padel-reket/7492497"
+
+
+def test_njuskalo_details_reads_description_and_condition():
+    html = """<div class="ClassifiedDetailDescription-text">Prodajem Adidas Metalbone 3.3 2024</div>
+      <dl><dt class="ClassifiedDetailBasicDetails-listTerm">Lokacija</dt>
+      <dd class="ClassifiedDetailBasicDetails-listDefinition">Zagreb</dd>
+      <dt class="ClassifiedDetailBasicDetails-listTerm">Stanje</dt>
+      <dd class="ClassifiedDetailBasicDetails-listDefinition">novo</dd></dl>"""
+    text, condition = njuskalo.parse_details(html)
+    assert "Metalbone 3.3 2024" in text and "Lokacija: Zagreb" in text and condition == "novo"

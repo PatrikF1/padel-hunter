@@ -49,6 +49,27 @@ reserve, superlight, pro, edt`, pa kod pretrage "Metalbone CTRL 3.4 2025":
 
 Novi izvor kataloga = async funkcija koja vraća `list[Racket]`, dodana u `PROVIDERS` u [core/catalog.py](core/catalog.py).
 
+## Dubinska provjera oglasa
+
+Ljudi na oglasnicima često pišu nepotpune naslove: naslov kaže "Adidas Metalbone", a opis "Metalbone 3.3, 2024".
+Zato se oglasnici (Vinted, Njuškalo, Index) pretražuju i šire, samo po nazivu modela (npr. `metalbone`).
+Oglasi čiji naslov spominje model, ali ne i verziju ili godinu, **otvaraju se i čita se opis**
+(do 30 po izvoru, opisi se pamte 24 h). Ako opis potvrdi točnu verziju, oglas ulazi u rezultate s
+oznakom "✓ potvrđeno iz opisa oglasa".
+
+Pravila: opis može **dopuniti** naslov (verzija, broj, godina). Torba ili brend iz opisa ne odbacuju oglas
+("dolazi s torbom"), a godina iz opisa samo potvrđuje ("kupljen 2023" ne odbacuje).
+
+## Mobitel
+
+Server radi i na kućnoj Wi-Fi mreži. U **Postavkama** na računalu je QR kod: skeniraš ga mobitelom i
+app se otvori (u pregledniku mobitela "Dodaj na početni zaslon" daje ikonu kao aplikacija).
+
+- Svaki uređaj osim računala treba tajni ključ (u QR kodu). Bez njega dobiva "403 zabranjeno"
+  ([core/access.py](core/access.py)).
+- Pri prvom pokretanju Windows pita za vatrozid: dopusti **privatne mreže**.
+- Izvan kuće: instaliraj [Tailscale](https://tailscale.com) na računalo i mobitel (besplatno), pa ista adresa radi svugdje.
+
 ## Izvori
 
 | Izvor | Vrsta | Kako | Dostava u HR |
@@ -91,6 +112,7 @@ upit ──► engine.stream()  ── paralelno svi izvori (timeout 15 s, cache
 | [core/models.py](core/models.py) | `Offer`, jedna ponuda; `total = cijena + naknade + dostava` |
 | [core/matcher.py](core/matcher.py) | prepoznavanje točnog modela; **rječnici** brendova, varijanti i opreme |
 | [core/catalog.py](core/catalog.py) | katalog reketa sa specifikacijama; oznake verzija po modelu |
+| [core/access.py](core/access.py) | pristup s mobitela: tajni ključ, LAN adresa, QR kod |
 | [core/engine.py](core/engine.py) | paralelno pokretanje izvora, cache, zdravlje izvora, rangiranje |
 | [core/shipping.py](core/shipping.py) | pravila dostave u HR, tečaj |
 | [core/watcher.py](core/watcher.py) | pozadinsko praćenje i obavijesti |
@@ -122,6 +144,7 @@ Kako prepoznati platformu: ako `https://trgovina/search/suggest.json?q=x` vrati 
 
    SOURCES = [Source("novi", "Novi", "market", search)]  # "market" ili "shop"
    ```
+   Opcionalno `details=` funkcija koja vraća opis oglasa (za dubinsku provjeru, vidi `sources/vinted.py`).
 2. Dodaj modul u `MODULES` u [sources/__init__.py](sources/__init__.py).
 3. Dodaj test parsera u [tests/test_sources.py](tests/test_sources.py) i provjeri s `check.py`.
 

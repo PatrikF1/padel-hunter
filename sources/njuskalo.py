@@ -43,6 +43,26 @@ def parse(html: str) -> list[Offer]:
     return offers
 
 
+def parse_details(html: str) -> tuple[str, str]:
+    """(opis + osnovne informacije, stanje) sa stranice oglasa."""
+    doc = LexborHTMLParser(html)
+    description = _text(doc, ".ClassifiedDetailDescription-text")
+    terms = [t.text(strip=True) for t in doc.css(".ClassifiedDetailBasicDetails-listTerm")]
+    values = [v.text(strip=True) for v in doc.css(".ClassifiedDetailBasicDetails-listDefinition")]
+    basics = dict(zip(terms, values))
+    return "\n".join([description] + [f"{k}: {v}" for k, v in basics.items()]), basics.get("Stanje", "").lower()
+
+
+async def details(offer: Offer) -> str:
+    async with session() as s:
+        r = await s.get(offer.url)
+        r.raise_for_status()
+    description, condition = parse_details(text(r))
+    if condition:
+        offer.condition = "new" if condition.startswith("nov") else "used"
+    return description
+
+
 async def search(query: str) -> list[Offer]:
     async with session() as s:
         r = await s.get(BASE + "/search/", params={"keywords": query, "sort": "new"})
@@ -50,4 +70,4 @@ async def search(query: str) -> list[Offer]:
         return parse(text(r))
 
 
-SOURCES = [Source(NAME, LABEL, "market", search)]
+SOURCES = [Source(NAME, LABEL, "market", search, details=details)]
