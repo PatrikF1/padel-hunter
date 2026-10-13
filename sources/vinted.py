@@ -1,45 +1,25 @@
 """Vinted (vinted.hr) - rabljeno i novo, uključuje oglase iz drugih EU zemalja koji šalju u HR.
 
-Stranica pretrage sadrži podatke kao Next.js payload (self.__next_f.push), pa ne treba prijava ni API ključ.
+Stranica pretrage sadrži podatke kao Next.js payload, pa ne treba prijava ni API ključ.
 """
 import json
 import re
 from urllib.parse import quote
 
-from core.http import session, text
+from core.http import next_payload, session, text
 from core.models import Offer
 from core.shipping import marketplace_shipping
 
 from .base import Source
 
 NAME, LABEL = "vinted", "Vinted"
-_CHUNK_START = 'self.__next_f.push([1,"'
-_CHUNK_END = '"])'
 _ITEMS_KEY = '"items":{"items":'
 _CONDITION = re.compile(r'product-item-id-(\d+)--overlay-link" title="[^"]*?Stanje: ([^,"]+)')
 _NEW_STATES = ("novo s etiketom", "novo bez etikete", "novo bez etiketa")
 
 
-def _payload(html: str) -> str:
-    """Spoji sve Next.js chunkove u jedan string. Bez regexa jer stranica ima ~4 MB."""
-    parts, pos = [], 0
-    while (start := html.find(_CHUNK_START, pos)) >= 0:
-        start += len(_CHUNK_START)
-        end = html.find(_CHUNK_END, start)
-        while end > 0 and html[end - 1] == "\\" and html[end - 2] != "\\":  # preskoči escapane navodnike
-            end = html.find(_CHUNK_END, end + 1)
-        if end < 0:
-            break
-        try:
-            parts.append(json.loads('"' + html[start:end] + '"'))
-        except ValueError:
-            pass
-        pos = end
-    return "".join(parts)
-
-
 def parse(html: str) -> list[Offer]:
-    payload = _payload(html)
+    payload = next_payload(html)
     i = payload.find(_ITEMS_KEY)
     if i < 0:
         return []

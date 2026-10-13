@@ -26,9 +26,17 @@ Testovi: `.venv\Scripts\python -m pip install -r requirements-dev.txt`, pa `.ven
 
 ## Odabir točne verzije (katalog)
 
-Na vrhu stranice je **katalog s ~800 reketa iz 31 brenda** (izvor: Padel Nuestro, osvježava se svaka 3 dana).
-Kaskadni filteri: **brend → model → godina → oblik → balans → razina → tip igre → površina → jezgra → spol**,
-plus pretraga po nazivu. Klik na verziju pokreće pretragu **točno te verzije**.
+Na vrhu stranice je **katalog s ~2200 reketa, modeli 2020–2027**. Osvježava se svaka 3 dana iz dva izvora
+koji se spajaju (isti reket iz oba izvora postaje jedan zapis):
+
+| izvor | što daje |
+|---|---|
+| Padel Nuestro | ~800 aktualnih reketa: oblik, balans, jezgra, površina, razina, tip igre, spol, cijena |
+| Padelful | ~1700 reketa uključujući starije modele: oblik, godina, preporučena cijena, **ocjene** (snaga, kontrola, sweet spot, upravljivost, odskok) |
+
+Filteri se međusobno sužavaju: **brend → model → godina → oblik → balans → razina → tip igre → površina →
+jezgra → spol**, plus minimalne ocjene (**snaga, kontrola, sweet spot, upravljivost, odskok ≥ X**) i pretraga
+po nazivu. Klik na verziju pokreće pretragu **točno te verzije**.
 
 Katalog za svaki model zna sve oznake verzija. Za Metalbone to su `carbon, ctrl, hrd, team, light, zz,
 reserve, superlight, pro, edt`, pa kod pretrage "Metalbone CTRL 3.4 2025":

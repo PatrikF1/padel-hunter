@@ -228,9 +228,11 @@ async function loadHealth() {
 // ---------- start ----------
 initCatalog({
   onPick(racket) {  // klik na verziju iz kataloga = pretraga točno te verzije
-    $("#q").value = racket.title;
+    const hasYear = racket.year && racket.title.includes(String(racket.year));
+    const query = hasYear || !racket.year ? racket.title : `${racket.title} ${racket.year}`;
+    $("#q").value = query;
     $("#finder").open = false;
-    runSearch(racket.title);
+    runSearch(query);
   },
 });
 loadSettings();

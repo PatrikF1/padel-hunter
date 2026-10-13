@@ -23,6 +23,15 @@ const FILTERS = [
   { key: "core", label: "Jezgra" },
   { key: "gender", label: "Spol" },
 ];
+// ocjene iz Padelfula (0-10); filter "barem X"
+const RATINGS = [
+  { key: "power", label: "Snaga" },
+  { key: "control", label: "Kontrola" },
+  { key: "sweetSpot", label: "Sweet spot" },
+  { key: "maneuverability", label: "Upravljivost" },
+  { key: "rebound", label: "Odskok" },
+];
+const RATING_STEPS = [7, 8, 8.5, 9, 9.5];
 const MAX_CARDS = 60;
 
 // "High, Medium" -> ["High", "Medium"]; godina je broj
@@ -33,7 +42,8 @@ function initCatalog({ onPick }) {
   const grid = box.querySelector(".filters-grid");
   const list = box.querySelector("#versions");
   const text = box.querySelector("#v-text");
-  const selected = {};  // key -> vrijednost
+  const selected = {};   // key -> vrijednost
+  const minRating = {};  // npr. power -> 9
   let rackets = [];
 
   for (const f of FILTERS) {
@@ -48,9 +58,20 @@ function initCatalog({ onPick }) {
     wrap.append(f.label, sel);
     grid.append(wrap);
   }
+  for (const rt of RATINGS) {
+    const sel = document.createElement("select");
+    sel.dataset.rating = rt.key;
+    sel.innerHTML = `<option value="">sve</option>` + RATING_STEPS.map((v) => `<option value="${v}">≥ ${v}</option>`).join("");
+    sel.addEventListener("change", () => { minRating[rt.key] = parseFloat(sel.value) || 0; update(); });
+    const wrap = document.createElement("label");
+    wrap.append(rt.label, sel);
+    grid.append(wrap);
+  }
   text.addEventListener("input", update);
   box.querySelector("#v-reset").addEventListener("click", () => {
     for (const k in selected) selected[k] = "";
+    for (const k in minRating) minRating[k] = 0;
+    grid.querySelectorAll("[data-rating]").forEach((sel) => { sel.value = ""; });
     text.value = "";
     update();
   });
@@ -58,6 +79,7 @@ function initCatalog({ onPick }) {
   function matches(r, except) {
     const words = text.value.toLowerCase().split(/\s+/).filter(Boolean);
     if (words.some((w) => !r.title.toLowerCase().includes(w))) return false;
+    if (Object.entries(minRating).some(([k, min]) => min && !((r.ratings || {})[k] >= min))) return false;
     return FILTERS.every((f) => f.key === except || !selected[f.key] || valuesOf(r, f.key).includes(selected[f.key]));
   }
 
@@ -92,9 +114,12 @@ function initCatalog({ onPick }) {
     el.className = "version";
     const specs = [r.year, ...["shape", "balance", "level", "play", "face", "core", "gender"].map((k) => r[k] && tr(r[k]))]
       .filter(Boolean).map((s) => `<span class="spec">${escapeHtml(String(s).split(/,\s*/).map(tr).join(", "))}</span>`).join("");
+    const ratings = RATINGS.filter((rt) => (r.ratings || {})[rt.key] != null)
+      .map((rt) => `${rt.label} ${r.ratings[rt.key]}`).join(" · ");
     const price = r.price ? `od ${eur(r.price)}` + (r.list_price > r.price ? ` <s>${eur(r.list_price)}</s>` : "") : "";
     el.innerHTML = `<img loading="lazy" src="${escapeHtml(safeUrl(r.image))}" alt="">
-      <div><div class="title">${escapeHtml(r.title)}</div><div class="specs">${specs}</div><div class="hint">${price}</div></div>`;
+      <div><div class="title">${escapeHtml(r.title)}</div><div class="specs">${specs}</div>
+      <div class="hint">${escapeHtml(ratings)}</div><div class="hint">${price}</div></div>`;
     el.addEventListener("click", () => onPick(r));
     return el;
   }

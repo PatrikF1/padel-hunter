@@ -1,4 +1,7 @@
 """Zajednički HTTP klijent. curl_cffi imitira pravi preglednik (TLS otisak), pa nas stranice ne blokiraju."""
+import json
+import re
+
 from curl_cffi.requests import AsyncSession
 
 TIMEOUT = 10
@@ -8,6 +11,26 @@ def session(impersonate: str = "chrome") -> AsyncSession:
     return AsyncSession(impersonate=impersonate, timeout=TIMEOUT)
 
 
+def next_payload(html: str) -> str:
+    """Next.js stranice šalju podatke kao self.__next_f.push([1,"..."]) - spoji sve u jedan string.
+    Bez regexa jer stranice imaju i po nekoliko MB."""
+    start_mark, end_mark = 'self.__next_f.push([1,"', '"])'
+    parts, pos = [], 0
+    while (start := html.find(start_mark, pos)) >= 0:
+        start += len(start_mark)
+        end = html.find(end_mark, start)
+        while end > 0 and html[end - 1] == "\\" and html[end - 2] != "\\":  # preskoči escapane navodnike
+            end = html.find(end_mark, end + 1)
+        if end < 0:
+            break
+        try:
+            parts.append(json.loads('"' + html[start:end] + '"'))
+        except ValueError:
+            pass
+        pos = end
+    return "".join(parts)
+
+
 def text(resp) -> str:
     # curl_cffi zna krivo pogoditi encoding; stranice su gotovo sve UTF-8
     return resp.content.decode("utf-8", "replace")
@@ -15,7 +38,6 @@ def text(resp) -> str:
 
 def eur(s: str) -> float | None:
     """'1.234,56 €' / '€165.22' / 'EUR 207,21' -> float"""
-    import re
     if s is None:
         return None
     s = str(s)

@@ -1,10 +1,11 @@
-"""Katalog reketa: brend, model, točna verzija, godina i specifikacije.
+"""Katalog reketa: brend, model, točna verzija, godina, specifikacije i ocjene.
 
 Koristi se za dvije stvari:
   1. sučelje - filteri (brend, model, godina, oblik, balans, razina...) i odabir TOČNE verzije
   2. matcher - za svaki model zna sve oznake verzija (npr. Metalbone: carbon, ctrl, hrd, team, light,
      zz, reserve, superlight...), pa oglas s oznakom koju nisi odabrao nije tvoj reket
 
+Izvori (PROVIDERS) se spajaju: isti reket iz više izvora postaje jedan zapis (merge()).
 Novi izvor kataloga = nova async funkcija koja vraća list[Racket], dodana u PROVIDERS.
 """
 import asyncio
@@ -12,10 +13,10 @@ import json
 import logging
 import re
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-from .http import session
+from .http import next_payload, session, text
 from .matcher import ACCESSORY, BRANDS, NEW_HINTS, PACK, STOPWORDS, tokens, years
 
 CATALOG_FILE = Path(__file__).resolve().parent.parent / "catalog.json"
@@ -38,6 +39,7 @@ COLORS = {
     "morado", "dorado", "plata", "atomic", "neon", "fluor", "colour", "color",
 }
 NOT_VERSION = PLAYERS | COLORS | STOPWORDS | ACCESSORY | PACK | BRANDS | NEW_HINTS | {"edicion", "collection"}
+SHAPES = {"Tear": "Teardrop", "Drop": "Teardrop", "Round": "Round", "Diamond": "Diamond", "Hybrid": "Hybrid"}
 
 
 @dataclass
@@ -58,6 +60,8 @@ class Racket:
     price: float | None = None       # trenutna cijena u izvornoj trgovini
     list_price: float | None = None  # puna (preporučena) cijena
     url: str = ""
+    ratings: dict = field(default_factory=dict)  # power, control, rebound, maneuverability, sweetSpot (0-10)
+    sources: list = field(default_factory=list)  # iz kojih izvora kataloga je zapis
 
 
 def family_of(brand: str, title: str) -> str:
@@ -75,9 +79,19 @@ def brand_key(brand: str) -> str:
     return "".join(tokens(brand))  # "Black Crown" -> "blackcrown", "Vibor-A" -> "vibora"
 
 
+def identity(r: Racket) -> tuple:
+    """Ključ za prepoznavanje istog reketa iz različitih izvora: brend + riječi naziva + godina.
+    Igrači, boje i godina u nazivu se ne gledaju ('METALBONE SUPERLIGHT' iz kolekcije 2026
+    = 'Metalbone Superlight 2026')."""
+    toks = tokens(r.title)
+    year_toks = {str(y) for y in years(toks)}
+    ignore = PLAYERS | COLORS | STOPWORDS | year_toks | {"plus"}
+    return brand_key(r.brand), tuple(sorted(set(toks) - ignore)), r.year
+
+
 # ---------- izvori kataloga ----------
 async def _padelnuestro() -> list[Racket]:
-    """Padel Nuestro (int) - ~800 reketa sa specifikacijama, preko njihovog Doofinder API-ja."""
+    """Padel Nuestro (int): ~800 aktualnih reketa s punim specifikacijama, preko njihovog Doofinder API-ja."""
     url = "https://eu1-search.doofinder.com/5/search"
     params = {"hashid": "7e6b0c88e88ddd9134bc543a8a37572e", "query": "", "rpp": 100,
               "filter[categories][]": "Padel Rackets"}
@@ -102,18 +116,80 @@ async def _padelnuestro() -> list[Racket]:
             continue
         brand, title = spec(p, "brand"), spec(p, "title")
         collection = " ".join(p.get("categories") or [])
-        year = max(years(tokens(title)) or years(re.findall(r"20\d\d", collection)) or {None},
-                   key=lambda y: y or 0)
+        year = max(years(tokens(title)) or years(re.findall(r"20\d\d", collection)) or {None}, key=lambda y: y or 0)
         rackets.append(Racket(
             id="pn:" + str(p.get("id")), brand=brand, title=title, family=family_of(brand, title), year=year,
             shape=spec(p, "forma"), balance=spec(p, "balance"), core=spec(p, "nucleo"), face=spec(p, "cara"),
             level=spec(p, "nivel de juego"), play=spec(p, "tipo de juego"), gender=spec(p, "jugador"),
-            image=spec(p, "image_link"), price=p.get("sale_price"), list_price=p.get("price"), url=spec(p, "link"),
+            image=spec(p, "image_link"), price=p.get("sale_price"), list_price=p.get("price"),
+            url=spec(p, "link"), sources=["Padel Nuestro"],
         ))
     return rackets
 
 
-PROVIDERS = [_padelnuestro]
+async def _padelful() -> list[Racket]:
+    """Padelful: baza ~1700 reketa 2021-2027 (i starijih koje trgovine više nemaju) s ocjenama."""
+    base = "https://www.padelful.com"
+    sem = asyncio.Semaphore(4)  # pristojno prema njihovom serveru
+
+    async def page(s, n: int) -> tuple[list[dict], int]:
+        """Vraća rekete sa stranice i ukupan broj reketa u bazi."""
+        async with sem:
+            r = await s.get(f"{base}/en/rackets", params={"page": n})
+        payload = next_payload(text(r))
+        out, pos, marker = [], 0, '{"_id":"en/rackets/'
+        while (i := payload.find(marker, pos)) >= 0:
+            try:
+                obj, end = json.JSONDecoder().raw_decode(payload, i)
+                out.append(obj)
+                pos = end
+            except ValueError:
+                pos = i + len(marker)
+        total = re.search(r'"total":(\d+),"page":\d+', payload)
+        return out, int(total.group(1)) if total else 0
+
+    async with session() as s:
+        first, total = await page(s, 1)
+        pages = -(-total // max(len(first), 1))  # zaokruži prema gore
+        rest = await asyncio.gather(*(page(s, n) for n in range(2, pages + 1)))
+    items = {o["slug"]: o for batch in [first, *(objs for objs, _ in rest)] for o in batch if o.get("slug")}
+
+    rackets = []
+    for o in items.values():
+        brand, title = o.get("brand") or "", o.get("model") or ""
+        image = o.get("image") or ""
+        rackets.append(Racket(
+            id="pf:" + o["slug"], brand=brand, title=title, family=family_of(brand, title),
+            year=o.get("season") if isinstance(o.get("season"), int) else None,
+            shape=SHAPES.get(o.get("shape") or "", o.get("shape") or ""),
+            image=base + image if image.startswith("/") else image,
+            price=o["bestPrice"] if isinstance(o.get("bestPrice"), (int, float)) else None,
+            list_price=o.get("pvp") if isinstance(o.get("pvp"), (int, float)) else None,
+            url=base + (o.get("url") or ""), ratings=o.get("ratings") or {}, sources=["Padelful"],
+        ))
+    return rackets
+
+
+PROVIDERS = [_padelnuestro, _padelful]  # redoslijed = prioritet podataka kod spajanja
+
+
+def merge(groups: list[list[Racket]]) -> list[Racket]:
+    """Isti reket iz više izvora -> jedan zapis. Prvi izvor ima prednost, ostali popunjavaju prazna polja."""
+    by_id: dict[tuple, Racket] = {}
+    for rackets in groups:
+        for r in rackets:
+            key = identity(r)
+            if key not in by_id:
+                by_id[key] = r
+                continue
+            main = by_id[key]
+            for f in fields(Racket):
+                if f.name in ("id", "title", "sources"):
+                    continue
+                if not getattr(main, f.name) and getattr(r, f.name):
+                    setattr(main, f.name, getattr(r, f.name))
+            main.sources = main.sources + [s for s in r.sources if s not in main.sources]
+    return list(by_id.values())
 
 
 # ---------- stanje ----------
@@ -146,12 +222,13 @@ def load() -> None:
 
 async def refresh() -> int:
     results = await asyncio.gather(*(p() for p in PROVIDERS), return_exceptions=True)
-    rackets = []
+    groups = []
     for provider, res in zip(PROVIDERS, results):
         if isinstance(res, Exception):
             log.warning("katalog %s nije dohvaćen: %s", provider.__name__, res)
         else:
-            rackets += res
+            groups.append(res)
+    rackets = merge(groups)
     if rackets:
         now = time.time()
         CATALOG_FILE.write_text(json.dumps({"updated": now, "rackets": [asdict(r) for r in rackets]},
@@ -174,10 +251,9 @@ def version_words(pq: dict) -> set[str]:
     """Sve poznate oznake verzija za model iz upita (npr. 'adidas metalbone 3.4' -> {carbon, ctrl, hrd, ...})."""
     core = pq["core"]
     for n in range(min(3, len(core)), 0, -1):  # "at" + "10" -> "at10"
-        key = "".join(core[:n])
-        brands = catalog.families.get(key)
+        brands = catalog.families.get("".join(core[:n]))
         if brands:
             if pq["brand"]:  # "black" iz upita odgovara brendu "blackcrown"
                 brands = {b for b in brands if pq["brand"] in b} or brands
-            return set().union(*(catalog.vocab.get((b, key), set()) for b in brands))
+            return set().union(*(catalog.vocab.get((b, "".join(core[:n])), set()) for b in brands))
     return set()
