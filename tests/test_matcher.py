@@ -129,3 +129,11 @@ def test_other_generation_when_query_has_year_but_no_number():
     assert score("adidas metalbone 2026", "Adidas Metalbone 2026 Ale Galán") == 1.0
     assert score("adidas metalbone", "Adidas Metalbone 3.3") == 1.0          # bez godine: sve generacije
     assert score("bullpadel vertex 04 2024", "Bullpadel Vertex 04 2024") == 1.0
+
+
+def test_test_rackets_for_rent_are_rejected():
+    assert score("adidas metalbone 2026", "Metalbone 2026 Padelschläger Testschläger") == 0.0
+
+
+def test_youth_is_variant():
+    assert score("adidas metalbone", "Adidas Metalbone Youth 3.4") == 0.5

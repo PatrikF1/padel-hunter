@@ -31,7 +31,7 @@ STRONG_BRANDS = {
 # oznake varijanti - ako ih ima u naslovu, a nema u upitu, to je "slični" a ne točan model
 VARIANTS = {
     "comfort", "hybrid", "light", "lite", "ctr", "ctrl", "control", "soft", "hard", "hrd",
-    "junior", "jr", "kids", "kid", "nino", "kinder",
+    "junior", "jr", "kids", "kid", "nino", "kinder", "youth", "jugend", "enfant", "djecji", "decji",
     "women", "woman", "womens", "mujer", "femme", "damen", "lady", "mulher", "donna", "femenina", "frau",
     "zenski", "zenska", "zene", "w",
     "pro", "plus", "max", "tour", "power", "attack", "elite", "team", "carbon", "edge", "ltd", "limited",
@@ -54,6 +54,9 @@ ACCESSORY = {
 RACKET = {"pala", "palas", "reket", "reketi", "racket", "racquet", "raqueta", "raquette", "schlager",
           "padelschlager", "rakieta", "racchetta", "paddle"}
 PACK = {"pack", "paket", "set", "kit", "bundle"}
+# testni reketi za posudbu (npr. Padel-Point "Testschläger") - ne prodaju se
+NOT_FOR_SALE = {"testschlager", "probeschlager", "testracket", "testracquet", "demo", "alquiler", "rental",
+                "verleih", "mietschlager", "najam"}
 STOPWORDS = RACKET | {"padel", "za", "de", "the", "for"}  # ne moraju biti u naslovu
 NEW_HINTS = {"novo", "novi", "nov", "nova", "zapakiran", "zapakirano", "neotpakiran", "nekoristen",
              "nekoristeno", "nerabljen", "nerabljeno", "etiketom", "new", "neu"}
@@ -111,6 +114,8 @@ def _number_after(toks: list[str], word: str) -> str | None:
 
 
 def _reject_accessory(words: set[str], is_pack: bool) -> str | None:
+    if test := words & NOT_FOR_SALE:
+        return "testni reket / najam: " + ", ".join(sorted(test))
     acc = words & ACCESSORY
     if acc and not (words & RACKET) and not is_pack:
         return "oprema: " + ", ".join(sorted(acc))

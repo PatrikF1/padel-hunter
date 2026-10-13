@@ -13,6 +13,9 @@ from .base import Source
 SHOPS = {  # name: (label, search_url_template)
     "zonadepadel": ("Zona de Padel", "https://www.zonadepadel.com/search?controller=search&s={q}"),
     "time2padel": ("Time2Padel", "https://www.time2padel.com/en/look-for?s={q}"),
+    "stockpadel": ("StockPadel", "https://www.stockpadel.com/search?controller=search&s={q}"),
+    "areapadel": ("Area Padel", "https://areapadel.com/search?controller=search&s={q}"),
+    "ipontennis": ("Ipon Tennis", "https://www.ipontennis.com/search?controller=search&s={q}"),
 }
 AJAX_HEADERS = {"accept": "application/json", "x-requested-with": "XMLHttpRequest"}
 

@@ -106,7 +106,7 @@ async def run_source(src: Source, q: str, pq: dict, use_cache: bool = True) -> l
         hits = [o for o in offers if o.match >= SIMILAR_MIN]
         if src.enrich and hits:
             await asyncio.wait_for(src.enrich(hits), SOURCE_TIMEOUT)
-        hits = [o for o in hits if o.shipping_note != "ne šalje u HR"]
+        hits = [o for o in hits if not o.excluded]
         h.update(ok=True, last_ok=time.time(), error="", fails=0, n=len(offers))
         return hits
     except Exception as e:

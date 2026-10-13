@@ -21,6 +21,12 @@ SHOPS = {  # name: (label, base_url)
     "padelproshop": ("Padel Pro Shop", "https://padelproshop.com"),
     "padelshop": ("Padelshop", "https://padelshop.com"),
     "padelpoint": ("Padel-Point", "https://www.padel-point.de"),
+    "tennispoint": ("Tennis-Point", "https://www.tennis-point.com"),
+    "padelwebshop": ("Padelwebshop", "https://padelwebshop.com"),
+    "hollandpadel": ("Holland Padel", "https://hollandpadel.com"),
+    "padelstore24": ("Padelstore24", "https://padelstore24.de"),
+    "padelfreunde": ("Padelfreunde", "https://padelfreunde.de"),
+    "justpadel": ("JustPadel", "https://justpadel.com"),
 }
 HR_ADDRESS = {"shipping_address[zip]": "10000", "shipping_address[country]": "Croatia",
               "shipping_address[province]": ""}
@@ -33,6 +39,7 @@ class _Quote:
     price: float            # cijena u košarici (EUR)
     shipping: float | None  # najjeftinija dostava u HR (EUR), None = ne šalje
     method: str
+    sold_out: bool = False
 
 
 _quotes: dict[str, _Quote] = {}  # url proizvoda -> zadnja ponuda
@@ -67,7 +74,11 @@ class ShopifyShop:
         async with session() as s:  # nova sesija = prazna košarica
             product = (await s.get(url + ".js")).json()
             variant = next((v for v in product["variants"] if v.get("available")), product["variants"][0])
-            await s.post(self.base + "/cart/add.js", json={"items": [{"id": variant["id"], "quantity": 1}]})
+            added = await s.post(self.base + "/cart/add.js", json={"items": [{"id": variant["id"], "quantity": 1}]})
+            if added.status_code != 200:  # npr. 422 "rasprodano" iako ga tražilica još prikazuje
+                quote = _Quote(time.time(), 0.0, None, "", sold_out=True)
+                _quotes[url] = quote
+                return quote
             cart = (await s.get(self.base + "/cart.js")).json()
             currency = cart.get("currency", "EUR")
             price = await to_eur(cart["items"][0]["final_line_price"] / 100, currency)
@@ -87,8 +98,10 @@ class ShopifyShop:
         for o, q in zip(offers, results):
             if isinstance(q, Exception):
                 o.shipping_note = "dostava nije dohvaćena"
+            elif q.sold_out:
+                o.excluded = "rasprodano"
             elif q.shipping is None:
-                o.shipping_note = "ne šalje u HR"
+                o.excluded = o.shipping_note = "ne šalje u HR"
             else:
                 o.price, o.shipping, o.shipping_exact = q.price, q.shipping, True
                 o.shipping_note = f"stvarna cijena iz košarice: {q.method}"

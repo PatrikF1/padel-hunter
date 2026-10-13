@@ -74,13 +74,15 @@ app se otvori (u pregledniku mobitela "Dodaj na početni zaslon" daje ikonu kao 
 
 | Izvor | Vrsta | Kako | Dostava u HR |
 |---|---|---|---|
-| Vinted | rabljeno/novo, i iz drugih EU zemalja | podaci iz stranice pretrage | procjena 3,99 € (paketomat) + stvarna naknada za zaštitu kupca |
-| Njuškalo | rabljeno | HTML pretraga | procjena 3,50 € (BOX NOW) |
-| Index oglasi | rabljeno | njihov JSON API | procjena 3,50 € (BOX NOW) |
+| Vinted | rabljeno/novo, i iz drugih EU zemalja | podaci iz stranice pretrage + opis oglasa | procjena 3,99 € (paketomat) + stvarna naknada za zaštitu kupca |
+| Njuškalo | rabljeno | HTML pretraga + opis i stanje oglasa | procjena 3,50 € (BOX NOW) |
+| Index oglasi | rabljeno | njihov JSON API + opis oglasa | procjena 3,50 € (BOX NOW) |
 | eBay.de | novo/rabljeno, samo EU | službeni Browse API (ključ u Postavkama) ili scraping kao rezerva | **stvarna**, za Zagreb 10000 |
-| Padel Market, Padel Pro Shop, Padelshop, Padel-Point | novo | Shopify `suggest.json` | **stvarna**, iz košarice (`/cart/shipping_rates.json`) |
+| Padel Market, Padel Pro Shop, Padelshop, Padel-Point, Tennis-Point, Padelwebshop, Holland Padel, Padelstore24, Padelfreunde, JustPadel | novo | Shopify `suggest.json` | **stvarna**, iz košarice; rasprodano se izbacuje |
 | Padel Nuestro, Padel Reference | novo | Doofinder search API | cjenik trgovine |
-| Zona de Padel, Time2Padel | novo | PrestaShop AJAX pretraga | cjenik trgovine |
+| Zona de Padel, Time2Padel, StockPadel, Area Padel, Ipon Tennis | novo | PrestaShop AJAX pretraga | cjenik trgovine ili procjena |
+| Padel.tienda, TodoPadel, Sportivo (HR) | novo | WooCommerce Store API | cjenik trgovine ili procjena |
+| **Vidmar Sport, Teniswil, Marines Sport, Tennis Zone** (HR) | novo | cijela kategorija padel reketa (HTML) | domaća dostava, besplatno iznad praga |
 
 Cjenici dostave u [core/shipping.py](core/shipping.py) provjereni su 2026-10-13 na stranicama trgovina:
 [Padel Nuestro](https://www.padelnuestro.com/int/shipping-and-delivery),
@@ -124,6 +126,9 @@ upit ──► engine.stream()  ── paralelno svi izvori (timeout 15 s, cache
 ## Proširenja
 
 ### Nova trgovina na već podržanoj platformi (1 red)
+- **HTML kategorija** (trgovine bez tražilice, npr. HR webshopovi): unos u `SHOPS` u
+  [sources/category_pages.py](sources/category_pages.py) s CSS selektorima kartice, naslova i cijene.
+- **WooCommerce**: red u `SHOPS` u [sources/woocommerce.py](sources/woocommerce.py).
 - **Shopify**: dodaj red u `SHOPS` u [sources/shopify.py](sources/shopify.py). Dostava se računa sama.
 - **Doofinder**: dodaj red u `SHOPS` u [sources/doofinder.py](sources/doofinder.py) (hashid je u
   `eu1-config.doofinder.com/2.x/<id>.js` na njihovoj stranici) i pravilo u `SHOP_RULES` u [core/shipping.py](core/shipping.py).
@@ -160,6 +165,8 @@ Upute su u aplikaciji, na kartici **Postavke**. Tokeni i ključevi spremaju se s
 
 ## Ograničenja
 - Facebook Marketplace traži prijavu, pa nije podržan.
+- Intersport.hr i Hervis.hr učitavaju proizvode JavaScriptom, a Padel Ibérico blokira automatski pristup
+  (Cloudflare), pa nisu uključeni.
 - Stranice mijenjaju strukturu. Kad izvor prestane raditi, vidi se u Postavkama → Izvori, a nakon
   3 uzastopne greške stiže Telegram upozorenje.
 - Praćenje radi dok je app pokrenut na računalu.

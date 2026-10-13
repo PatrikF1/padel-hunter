@@ -23,6 +23,21 @@ SHOP_RULES = {
     # padelreference.com - Schengen, cijena za HR nije objavljena
     "padelreference": {"tiers": [(0, 15.0)], "exact": False,
                        "note": "procjena: trgovina ne objavljuje cijenu za HR"},
+    # stockpadel.com/en/content/18-shipping-costs- (UPS, EU)
+    "stockpadel": {"tiers": [(400, 4.95), (200, 9.95), (100, 14.95), (0, 19.95)], "exact": True,
+                   "note": "cjenik trgovine za EU"},
+    "areapadel": {"tiers": [(0, 14.95)], "exact": False, "note": "procjena: UPS, cijena vidljiva u košarici"},
+    "ipontennis": {"tiers": [(0, 14.95)], "exact": False, "note": "procjena: cijena vidljiva u košarici"},
+    # padel.tienda/envios - Hrvatska navedena
+    "padeltienda": {"tiers": [(390, 0.0), (0, 34.95)], "exact": True, "note": "cjenik trgovine za HR"},
+    # todopadel.shop/envios - Europa, po težini, od 8,47 € + PDV
+    "todopadel": {"tiers": [(0, 10.59)], "exact": False, "note": "procjena: od 8,47 € + PDV, ovisi o težini"},
+    # hrvatske trgovine - domaća dostava
+    "sportivo": {"tiers": [(100, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 100 €, inače procjena"},
+    "vidmarsport": {"tiers": [(100, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 100 €, inače procjena"},
+    "tenniszone": {"tiers": [(129, 0.0), (0, 4.99)], "exact": False, "note": "HR trgovina: besplatno od 129 €, inače procjena"},
+    "teniswil": {"tiers": [(0, 4.99)], "exact": False, "note": "HR trgovina: procjena domaće dostave"},
+    "marines": {"tiers": [(0, 4.99)], "exact": False, "note": "HR trgovina: procjena domaće dostave"},
 }
 
 MARKETPLACE_EST = {

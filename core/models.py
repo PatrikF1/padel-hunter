@@ -18,6 +18,7 @@ class Offer:
     location: str = ""
     posted: str = ""
     is_auction: bool = False
+    excluded: str = ""       # razlog zašto ponuda ne ide u rezultate (rasprodano, ne šalje u HR...)
     extra: dict = field(default_factory=dict)
     # popunjava matcher / ranking
     match: float = 0.0

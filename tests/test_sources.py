@@ -52,3 +52,23 @@ def test_njuskalo_details_reads_description_and_condition():
       <dd class="ClassifiedDetailBasicDetails-listDefinition">novo</dd></dl>"""
     text, condition = njuskalo.parse_details(html)
     assert "Metalbone 3.3 2024" in text and "Lokacija: Zagreb" in text and condition == "novo"
+
+
+def test_category_page_parse():
+    from sources import category_pages
+    shop = category_pages.SHOPS["tenniszone"]
+    html = """<div class="product-box"><a class="product-image-link" href="https://tennis-zone.hr/padel/reketi/adidas/metalbone-2026/">
+      <img src="https://img/x.jpg"></a><a class="product-name" title="Adidas Metalbone 2026" href="/x"></a>
+      <span class="product-price">275,90&nbsp;€</span></div>
+      <div class="product-box"><a href="/y"></a><span class="product-price"></span></div>"""
+    [o] = category_pages.parse("tenniszone", shop, html)
+    assert (o.title, o.price, o.shipping) == ("Adidas Metalbone 2026", 275.9, 0.0)  # besplatno od 129 €
+    assert o.url == "https://tennis-zone.hr/padel/reketi/adidas/metalbone-2026/"
+
+
+def test_category_select_attribute_and_fallback():
+    from selectolax.lexbor import LexborHTMLParser
+    from sources.category_pages import _select
+    node = LexborHTMLParser('<div><img alt="Wilson Bela Pro"><span class="price">104,00 €</span></div>').css_first("div")
+    assert _select(node, "img@alt") == "Wilson Bela Pro"
+    assert _select(node, ".discount-price, .price") == "104,00 €"
