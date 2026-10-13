@@ -149,3 +149,22 @@ def test_year_after_model_name_is_not_a_model_number():
     wanted = parse_query("adidas metalbone 3.3")
     result = match(wanted, "Adidas Metalbone 2024")
     assert result.reason == REASON_MISSING_WORDS and worth_opening(wanted, "Adidas Metalbone 2024", result)
+
+
+# ---------- oprema za reket (štitnici, gripovi) ----------
+def test_frame_protector_with_racket_word_is_accessory_when_cheap():
+    wanted = parse_query("adidas metalbone 3.3")
+    title = "Adidas Metalbone 3.3 - Adidas Metalbone 09 Stoßfänger Protektor Schläger"
+    assert match(wanted, title, price=25.0).reason == REASON_ACCESSORY   # 15-40 € s riječju "reket" = oprema
+    assert tokens("Stoßfänger") == ["stossfanger"]
+
+
+def test_racket_sold_with_protector_is_kept():
+    wanted = parse_query("bullpadel vertex 03")
+    title = "Rakieta do padla Bullpadel Vertex 03 Maxi Sanchez + Protector"
+    assert match(wanted, title, price=89.98).score == EXACT
+
+
+def test_too_cheap_to_be_a_racket():
+    from core.matcher import REASON_TOO_CHEAP
+    assert match(parse_query("nox at10"), "Nox AT10 mini privjesak reket", price=7.5).reason == REASON_TOO_CHEAP

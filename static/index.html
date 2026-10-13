@@ -17,16 +17,23 @@
 <header>
   <h1>🎾 Padel Hunter</h1>
   <nav>
-    <button data-tab="search" class="active">Pretraga</button>
-    <button data-tab="watch">Praćenje <span id="watch-count"></span></button>
-    <button data-tab="settings">Postavke <span id="tg-dot" class="dot"></span></button>
+    <button data-tab="search" class="active"><span class="icon">🔍</span><span class="label">Pretraga</span></button>
+    <button data-tab="watch"><span class="icon">🔔</span><span class="label">Praćenje <span id="watch-count"></span></span></button>
+    <button data-tab="settings"><span class="icon">⚙️</span><span class="label">Postavke <span id="tg-dot" class="dot"></span></span></button>
   </nav>
 </header>
 
 <main>
   <!-- PRETRAGA -->
   <section id="tab-search" class="tab active">
-    <details id="finder" open>
+    <form id="search-form" class="search-bar">
+      <input id="q" list="titles" type="search" enterkeyhint="search"
+             placeholder="Model, npr. Nox AT10 Genius 18K 2024" autocomplete="off">
+      <datalist id="titles"></datalist>
+      <button type="submit" aria-label="Traži">Traži</button>
+    </form>
+
+    <details id="finder">
       <summary>🎯 Odaberi točnu verziju <span class="hint"></span></summary>
       <div class="filters-grid"></div>
       <div class="row">
@@ -37,12 +44,7 @@
       <div id="versions" class="versions"></div>
     </details>
 
-    <form id="search-form" class="row">
-      <input id="q" list="titles" placeholder="ili upiši model, npr. Nox AT10 Genius 18K 2024" autocomplete="off">
-      <datalist id="titles"></datalist>
-      <button type="submit">Traži</button>
-    </form>
-    <div class="row filters">
+    <div class="toolbar">
       <div class="seg" id="f-cond">
         <button data-v="all" class="active">Sve</button>
         <button data-v="new">Novo</button>
@@ -62,8 +64,8 @@
         <option value="match">Točnost podudaranja</option>
         <option value="source">Izvor A–Ž</option>
       </select>
-      <label>max <input type="number" id="f-max" placeholder="€" min="0"></label>
-      <button id="watch-btn" class="ghost" hidden>🔔 Prati ovaj model</button>
+      <input type="number" id="f-max" placeholder="max €" min="0" inputmode="decimal" aria-label="Najviša cijena">
+      <button id="watch-btn" class="ghost" hidden>🔔 Prati</button>
     </div>
     <details id="sources-box">
       <summary id="sources-sum" class="hint">Izvori</summary>
@@ -75,7 +77,7 @@
 
   <!-- PRAĆENJE -->
   <section id="tab-watch" class="tab">
-    <form id="watch-form" class="row">
+    <form id="watch-form" class="row stack-on-mobile">
       <input id="w-q" placeholder="Model koji pratiš">
       <input id="w-max" type="number" min="0" placeholder="javi ispod € (ukupno)">
       <label><input type="checkbox" id="w-used" checked> i rabljeno</label>
@@ -83,7 +85,7 @@
       <button type="submit">Dodaj</button>
     </form>
     <p class="hint">Oglasnici se provjeravaju svakih 90 s, trgovine svakih 15 min. Bez praga javlja samo
-      apsurdne cijene (≥ 30 % ispod uobičajene). App mora biti pokrenut.</p>
+      apsurdne cijene (≥ 30 % ispod uobičajene). Radi dok je server (ili računalo) upaljen.</p>
     <div id="watches"></div>
   </section>
 

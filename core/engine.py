@@ -95,7 +95,7 @@ async def fetch(source: Source, term: str, use_cache: bool) -> list[Offer]:
 
 # ---------- 2. ocjena ----------
 def score_offer(wanted: WantedRacket, offer: Offer, details: str = "") -> None:
-    result = match(wanted, offer.title, offer.category, details=details)
+    result = match(wanted, offer.title, offer.category, details=details, price=offer.price)
     offer.match, offer.match_note, offer.match_reason = result.score, result.note, result.reason
 
 
@@ -130,7 +130,7 @@ async def deep_check(source: Source, wanted: WantedRacket, offers: list[Offer]) 
     async def check(offer: Offer) -> None:
         async with limit:
             details = await _read_details(source, offer)
-        result = match(wanted, offer.title, offer.category, details=details)
+        result = match(wanted, offer.title, offer.category, details=details, price=offer.price)
         if result.score > offer.match:
             offer.match, offer.match_reason = result.score, ""
             offer.match_note = "; ".join(filter(None, [NOTE_FROM_DETAILS, result.note]))

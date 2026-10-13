@@ -63,6 +63,16 @@ async def require_key(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def always_revalidate_ui(request: Request, call_next):
+    """Preglednik (i iPhone ikona) uvijek provjeri ima li novije verzije sučelja - inače bi nakon ažuriranja
+    servera još danima prikazivao stari izgled iz predmemorije."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")

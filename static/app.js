@@ -290,6 +290,8 @@ async function loadSourceHealth() {
 }
 
 // ---------- start ----------
+const IS_PHONE = matchMedia("(max-width: 560px)").matches;
+$("#finder").open = !IS_PHONE;  // na mobitelu je katalog zatvoren, da pretraga i rezultati budu odmah vidljivi
 initCatalog({
   onPick(racket) {  // klik na verziju iz kataloga = pretraga točno te verzije (+ godina ako je nema u nazivu)
     const titleHasYear = racket.year && racket.title.includes(String(racket.year));

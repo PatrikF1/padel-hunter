@@ -24,6 +24,7 @@ NOTE_FROM_DETAILS = "✓ potvrđeno iz opisa oglasa"
 # kodovi razloga odbijanja (MatchResult.reason) - stabilni, za kod; MatchResult.note je tekst za ljude
 REASON_NOT_FOR_SALE = "not_for_sale"
 REASON_ACCESSORY = "accessory"
+REASON_TOO_CHEAP = "too_cheap"
 REASON_OTHER_BRAND = "other_brand"
 REASON_MISSING_WORDS = "missing_words"
 REASON_OTHER_MODEL_NUMBER = "other_model_number"
@@ -66,6 +67,12 @@ ACCESSORY = {
     "keychain", "privjesak", "poster", "sticker", "naljepnica", "minipala", "mini", "antivibrador",
     "dampener", "tubo", "pantalon", "hlace",
 }
+# izrazita oprema ZA reket - naslov često sadrži i "reket" ("Protektor für Metalbone Schläger"), pa ovdje
+# odlučuje cijena: ispod ACCESSORY_MAX_PRICE to je oprema, iznad je reket koji dolazi s tom opremom
+STRONG_ACCESSORY = {"protector", "protektor", "protectores", "stossfanger", "bumper", "schutz", "schutzband",
+                    "titanskin", "skin", "overgrip", "grip", "grips", "funda", "cover", "hulle", "navlaka", "futrola"}
+ACCESSORY_MAX_PRICE = 40.0   # EUR
+MIN_RACKET_PRICE = 15.0      # EUR - ispod ovoga nijedan pravi reket (ni rabljen) - privjesci, mini reketi...
 RACKET = {"pala", "palas", "reket", "reketi", "racket", "racquet", "raqueta", "raquette", "schlager",
           "padelschlager", "rakieta", "racchetta", "paddle"}
 PACK = {"pack", "paket", "set", "kit", "bundle"}
@@ -79,7 +86,8 @@ NEW_HINTS = {"novo", "novi", "nov", "nova", "zapakiran", "zapakirano", "neotpaki
 
 # ---------- normalizacija teksta ----------
 def _strip_accents(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text or "")
+    text = (text or "").replace("ß", "ss").replace("ẞ", "SS")  # "Stoßfänger" -> "stossfanger"
+    text = unicodedata.normalize("NFKD", text)
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
@@ -158,12 +166,17 @@ def _number_after(words: list[str], word: str) -> str | None:
     return None
 
 
-def _reject_not_racket(title_words: set[str], is_pack: bool) -> MatchResult | None:
+def _reject_not_racket(title_words: set[str], is_pack: bool, price: float | None) -> MatchResult | None:
     if test := title_words & NOT_FOR_SALE:
         return MatchResult(NO_MATCH, "testni reket / najam: " + ", ".join(sorted(test)), REASON_NOT_FOR_SALE)
+    if price is not None and price < MIN_RACKET_PRICE:
+        return MatchResult(NO_MATCH, f"prejeftino za reket ({price:.2f} €) - vjerojatno oprema", REASON_TOO_CHEAP)
     accessories = title_words & ACCESSORY
     if accessories and not (title_words & RACKET) and not is_pack:
         return MatchResult(NO_MATCH, "oprema: " + ", ".join(sorted(accessories)), REASON_ACCESSORY)
+    strong = title_words & STRONG_ACCESSORY
+    if strong and not is_pack and price is not None and price < ACCESSORY_MAX_PRICE:
+        return MatchResult(NO_MATCH, f"oprema za reket: {', '.join(sorted(strong))} ({price:.2f} €)", REASON_ACCESSORY)
     return None
 
 
@@ -209,8 +222,9 @@ def _other_generation(wanted: WantedRacket, words: list[str]) -> str | None:
 
 
 # ---------- javno ----------
-def match(wanted: WantedRacket, title: str, category: str = "", details: str = "") -> MatchResult:
-    """Koliko oglas odgovara traženom reketu.
+def match(wanted: WantedRacket, title: str, category: str = "", details: str = "",
+          price: float | None = None) -> MatchResult:
+    """Koliko oglas odgovara traženom reketu. price (EUR, bez dostave) pomaže razlikovati reket od opreme.
 
     details = opis/atributi sa stranice oglasa (dubinska provjera). Opis smije DOPUNITI naslov
     (naslov 'Adidas Metalbone', opis '... Metalbone 3.3 2024'), ali torba/brend se gledaju samo u naslovu,
@@ -220,7 +234,7 @@ def match(wanted: WantedRacket, title: str, category: str = "", details: str = "
     title_and_category = set(title_words) | set(tokens(category))
     is_pack = bool(title_and_category & PACK)
 
-    rejected = (_reject_not_racket(title_and_category, is_pack) or _reject_brand(wanted, title_and_category)
+    rejected = (_reject_not_racket(title_and_category, is_pack, price) or _reject_brand(wanted, title_and_category)
                 or _reject_model(wanted, all_words))
     if rejected:
         return rejected

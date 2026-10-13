@@ -56,8 +56,14 @@ function initCatalog({ onPick }) {
       refresh();
     });
   }
+  // ocjene su u posebnom podizborniku da filteri ne zauzmu cijeli ekran na mobitelu
+  const ratingsBox = document.createElement("details");
+  ratingsBox.className = "ratings";
+  ratingsBox.innerHTML = `<summary>Ocjene (snaga, kontrola, sweet spot…)</summary><div class="filters-grid"></div>`;
+  grid.after(ratingsBox);
+  const ratingsGrid = ratingsBox.querySelector(".filters-grid");
   for (const filter of RATING_FILTERS) {
-    const select = labeledSelect(filter.label);
+    const select = labeledSelect(filter.label, ratingsGrid);
     select.dataset.rating = filter.key;
     select.innerHTML = `<option value="">sve</option>` + RATING_STEPS.map((step) => `<option value="${step}">≥ ${step}</option>`).join("");
     select.addEventListener("change", () => { minRating[filter.key] = parseFloat(select.value) || 0; refresh(); });
@@ -66,16 +72,16 @@ function initCatalog({ onPick }) {
   finder.querySelector("#v-reset").addEventListener("click", () => {
     for (const key in selectedSpec) selectedSpec[key] = "";
     for (const key in minRating) minRating[key] = 0;
-    grid.querySelectorAll("[data-rating]").forEach((select) => { select.value = ""; });
+    finder.querySelectorAll("[data-rating]").forEach((select) => { select.value = ""; });
     nameFilter.value = "";
     refresh();
   });
 
-  function labeledSelect(label) {
+  function labeledSelect(label, container = grid) {
     const select = document.createElement("select");
     const wrapper = document.createElement("label");
     wrapper.append(label, select);
-    grid.append(wrapper);
+    container.append(wrapper);
     return select;
   }
 
