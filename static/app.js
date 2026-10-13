@@ -1,7 +1,7 @@
 // Padel Hunter - frontend (bez frameworka). Logika rangiranja je ista kao u core/engine.py.
 "use strict";
 
-const EXACT = 0.8, SIMILAR = 0.5, DEAL_THRESHOLD = 0.30;
+const EXACT = 0.8, DEAL_THRESHOLD = 0.30;
 const $ = (sel) => document.querySelector(sel);
 const safeUrl = (u) => /^https?:\/\//i.test(u || "") ? u : "#";
 const eur = (n) => n == null ? "?" : n.toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
@@ -23,10 +23,11 @@ document.querySelectorAll("nav button").forEach((btn) => btn.addEventListener("c
 }));
 
 // ---------- pretraga ----------
-const state = { query: "", offers: [], cond: "all", es: null };
+const state = { query: "", offers: [], cond: "all", es: null, shown: 100 };
 
 $("#search-form").addEventListener("submit", (e) => { e.preventDefault(); runSearch($("#q").value.trim()); });
-$("#f-similar").addEventListener("change", render);
+$("#f-view").addEventListener("change", () => { state.shown = RENDER_STEP; render(); });
+$("#f-sort").addEventListener("change", () => { state.shown = RENDER_STEP; render(); });
 $("#f-max").addEventListener("input", render);
 $("#f-cond").addEventListener("click", (e) => {
   if (!e.target.dataset.v) return;
@@ -38,7 +39,7 @@ $("#f-cond").addEventListener("click", (e) => {
 function runSearch(q) {
   if (q.length < 2) return;
   state.es?.close();
-  Object.assign(state, { query: q, offers: [] });
+  Object.assign(state, { query: q, offers: [], shown: RENDER_STEP });
   history.replaceState(null, "", "?q=" + encodeURIComponent(q));
   $("#sources").innerHTML = "";
   $("#summary").textContent = "Tražim…";
@@ -51,6 +52,7 @@ function runSearch(q) {
     for (const label of JSON.parse(e.data).sources) {
       $("#sources").insertAdjacentHTML("beforeend", `<span class="chip wait" data-label="${label}">${label}</span>`);
     }
+    updateSourcesSummary();
   });
   es.addEventListener("source", (e) => {
     const d = JSON.parse(e.data);
@@ -58,6 +60,7 @@ function runSearch(q) {
     chip.className = "chip " + (d.ok ? "ok" : "err");
     chip.textContent = d.ok ? `${d.label} ${d.offers.length}` : `${d.label} ✕`;
     chip.title = d.ok ? `${d.ms} ms` : d.error;
+    updateSourcesSummary();
     state.offers.push(...d.offers);
     render();
   });
@@ -69,6 +72,12 @@ function runSearch(q) {
   es.onerror = () => { es.close(); $("#summary").textContent = "Veza sa serverom prekinuta."; };
 }
 
+function updateSourcesSummary() {
+  const count = (cls) => document.querySelectorAll(`#sources .chip.${cls}`).length;
+  const [ok, err, wait] = [count("ok"), count("err"), count("wait")];
+  $("#sources-sum").textContent = `Izvori: ✓ ${ok} radi` + (err ? ` · ✕ ${err} ne radi` : "") + (wait ? ` · ⏳ ${wait} traži…` : "");
+}
+
 function referencePrice(offers) {
   const exact = offers.filter((o) => o.match >= EXACT);
   const fresh = exact.filter((o) => o.condition === "new").map((o) => o.total);
@@ -78,6 +87,19 @@ function referencePrice(offers) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+// sortiranje: ključ -> usporedba (sve ponude u jednoj listi, korisnik bira poredak)
+const SORTS = {
+  "total-asc": (a, b) => a.total - b.total,
+  "total-desc": (a, b) => b.total - a.total,
+  "price-asc": (a, b) => a.price - b.price,
+  "price-desc": (a, b) => b.price - a.price,
+  "deal": (a, b) => b.deal_pct - a.deal_pct || a.total - b.total,
+  "newest": (a, b) => (b.posted || "").localeCompare(a.posted || "") || a.total - b.total,
+  "source": (a, b) => a.source_name.localeCompare(b.source_name) || a.total - b.total,
+  "match": (a, b) => b.match - a.match || a.total - b.total,
+};
+const RENDER_STEP = 100;  // koliko ponuda se iscrtava odjednom ("Prikaži još")
+
 function render() {
   const ref = referencePrice(state.offers);
   for (const o of state.offers) {
@@ -85,25 +107,33 @@ function render() {
     o.is_deal = o.deal_pct >= DEAL_THRESHOLD;
   }
   const max = parseFloat($("#f-max").value) || Infinity;
-  const visible = state.offers
+  const onlyExact = $("#f-view").value === "exact";
+  const filtered = state.offers
     .filter((o) => state.cond === "all" || o.condition === state.cond)
-    .filter((o) => o.total <= max)
-    .sort((a, b) => a.total - b.total);
-  const exact = visible.filter((o) => o.match >= EXACT);
-  const similar = visible.filter((o) => o.match < EXACT && o.match >= SIMILAR);
+    .filter((o) => o.total <= max);
+  const exact = filtered.filter((o) => o.match >= EXACT);
+  const visible = (onlyExact ? exact : filtered).sort(SORTS[$("#f-sort").value] || SORTS["total-asc"]);
 
   const box = $("#results");
   box.innerHTML = "";
-  if (exact.length) box.append(group(`Točan model (${exact.length})`), ...exact.map((o, i) => offerEl(o, i === 0)));
-  if ($("#f-similar").checked && similar.length) box.append(group(`Varijante (${similar.length})`), ...similar.map((o) => offerEl(o)));
+  const cheapestExact = [...exact].sort(SORTS["total-asc"])[0];
+  box.append(...visible.slice(0, state.shown).map((o) => offerEl(o, o === cheapestExact)));
+  if (visible.length > state.shown) {
+    const more = document.createElement("button");
+    more.className = "ghost more";
+    more.textContent = `Prikaži još (${visible.length - state.shown})`;
+    more.onclick = () => { state.shown += RENDER_STEP; render(); };
+    box.append(more);
+  }
 
   const time = $("#summary").dataset.time;
+  const sources = new Set(filtered.map((o) => o.source)).size;
   const parts = [];
-  if (exact.length) parts.push(`Najbolje: <b>${eur(exact[0].total)}</b> (${exact[0].source_name})`);
+  if (filtered.length) parts.push(`<b>${filtered.length}</b> ponuda iz ${sources} izvora (${exact.length} točan model)`);
+  if (cheapestExact) parts.push(`najjeftiniji točan: <b>${eur(cheapestExact.total)}</b> (${escapeHtml(cheapestExact.source_name)})`);
   if (ref) parts.push(`uobičajena cijena ~${eur(ref)}`);
   const deals = exact.filter((o) => o.is_deal).length;
   if (deals) parts.push(`🔥 ${deals} apsurdnih`);
-  if (!exact.length && similar.length && !$("#f-similar").checked) parts.push(`${similar.length} varijanti skriveno`);
   if (time) parts.push(`${time} s`);
   if (state.query) $("#summary").innerHTML = parts.join(" · ") || (time ? "Ništa nije pronađeno." : "Tražim…");
 }
@@ -123,7 +153,9 @@ function offerEl(o, best = false) {
   el.querySelector("img").src = o.image || "";
   el.querySelector(".title").textContent = o.title;
 
-  const badges = [];
+  const badges = [o.match >= EXACT
+    ? `<span class="badge exact">✓ točan model</span>`
+    : `<span class="badge variant">varijanta</span>`];
   if (o.is_deal) badges.push(`<span class="badge deal">🔥 −${Math.round(o.deal_pct * 100)}%</span>`);
   badges.push(`<span class="badge ${o.condition}">${o.condition === "new" ? "novo" : "rabljeno"}</span>`);
   if (o.is_auction) badges.push(`<span class="badge">aukcija</span>`);

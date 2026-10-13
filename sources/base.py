@@ -3,10 +3,23 @@
 Novi izvor = nova datoteka u sources/ koja definira listu `SOURCES` s jednim ili više `Source` objekata,
 i jedan red u sources/__init__.py (MODULES). Vidi README -> "Dodavanje novog izvora".
 """
+import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from core.models import Offer
+
+MAX_PAGES = 5  # najviše stranica rezultata po izvoru i upitu
+
+
+async def fetch_pages(get_page: Callable[[int], Awaitable[list]], full_page: int, max_pages: int = MAX_PAGES) -> list:
+    """Stranica 1, a ako je puna (ima još rezultata), ostale stranice paralelno.
+    Stranica koja ne uspije se preskače - bolje dio rezultata nego ništa."""
+    first = await get_page(1)
+    if len(first) < full_page or max_pages <= 1:
+        return first
+    rest = await asyncio.gather(*(get_page(n) for n in range(2, max_pages + 1)), return_exceptions=True)
+    return first + [item for page in rest if isinstance(page, list) for item in page]
 
 SearchFn = Callable[[str], Awaitable[list[Offer]]]
 EnrichFn = Callable[[list[Offer]], Awaitable[None]]

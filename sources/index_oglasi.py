@@ -4,7 +4,9 @@ from core.matcher import looks_new
 from core.models import Offer
 from core.shipping import marketplace_shipping
 
-from .base import Source
+from .base import Source, fetch_pages
+
+PAGE_SIZE = 50  # najviše što API vraća
 
 NAME, LABEL = "index", "Index oglasi"
 BASE = "https://www.index.hr/oglasi"
@@ -56,10 +58,15 @@ async def search(query: str) -> list[Offer]:
     async with session() as s:
         await s.get(BASE)
         await _load_url_slugs(s)
-        r = await s.get(BASE + "/api/aditem", params={"text": query, "sortOption": 4, "itemPerPage": 48},
-                        headers={"accept": "application/json", "referer": BASE + "/pretraga"})
-        r.raise_for_status()
-        return parse(r.json())
+
+        async def page(n: int) -> list[Offer]:
+            r = await s.get(BASE + "/api/aditem", params={"text": query, "sortOption": 4, "itemPerPage": PAGE_SIZE,
+                                                          "page": n},
+                            headers={"accept": "application/json", "referer": BASE + "/pretraga"})
+            r.raise_for_status()
+            return parse(r.json())
+
+        return await fetch_pages(page, full_page=PAGE_SIZE)
 
 
 SOURCES = [Source(NAME, LABEL, "market", search, details=details)]

@@ -6,7 +6,7 @@ from core.matcher import looks_new
 from core.models import Offer
 from core.shipping import marketplace_shipping
 
-from .base import Source
+from .base import Source, fetch_pages
 
 NAME, LABEL = "njuskalo", "Njuškalo"
 BASE = "https://www.njuskalo.hr"
@@ -63,11 +63,17 @@ async def details(offer: Offer) -> str:
     return description
 
 
+PAGE_SIZE = 20  # Njuškalo prikazuje ~25 oglasa po stranici (+ izdvojene)
+
+
 async def search(query: str) -> list[Offer]:
     async with session() as s:
-        r = await s.get(BASE + "/search/", params={"keywords": query, "sort": "new"})
-        r.raise_for_status()
-        return parse(text(r))
+        async def page(n: int) -> list[Offer]:
+            r = await s.get(BASE + "/search/", params={"keywords": query, "sort": "new", "page": n})
+            r.raise_for_status()
+            return parse(text(r))
+
+        return await fetch_pages(page, full_page=PAGE_SIZE)
 
 
 SOURCES = [Source(NAME, LABEL, "market", search, details=details)]

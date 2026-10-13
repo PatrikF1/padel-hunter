@@ -49,6 +49,8 @@ select { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-
 .specs { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0; }
 .spec { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
 
+#sources-box { margin: 6px 0 4px; }
+#sources-box summary { cursor: pointer; padding: 4px 0; }
 .sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
 .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--card); }
 .chip.ok { color: var(--ok); } .chip.err { color: var(--bad); } .chip.wait::after { content: " …"; }
@@ -67,6 +69,9 @@ select { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-
 .offer.best { box-shadow: 0 0 0 2px var(--ok) inset; }
 .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 4px; border: 1px solid var(--line); }
 .badge.deal { background: var(--deal); color: #fff; border-color: var(--deal); }
+.badge.exact { color: var(--ok); border-color: var(--ok); }
+.badge.variant { color: var(--muted); border-style: dashed; }
+.more { width: 100%; margin: 8px 0 24px; }
 .badge.new { color: var(--ok); } .badge.used { color: var(--muted); }
 .est { border-bottom: 1px dotted var(--muted); }
 
@@ -76,13 +81,15 @@ select { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-
 .mobile { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
 .qr svg { width: 200px; height: 200px; border-radius: 8px; }
 
-/* ---------- mobitel ---------- */
+/* ---------- mobitel (iPhone: izbornik dolje kao u aplikacijama, prostor za notch i donju traku) ---------- */
 @media (max-width: 560px) {
-  body { font-size: 14px; }
-  header { padding: 10px 12px; }
-  h1 { font-size: 16px; }
-  nav button { padding: 6px 8px; }
-  main { padding: 12px; }
+  body { font-size: 14px; -webkit-tap-highlight-color: transparent; }
+  header { padding: calc(10px + env(safe-area-inset-top)) 16px 10px; }
+  h1 { font-size: 17px; }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; background: var(--card);
+        border-top: 1px solid var(--line); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  nav button { flex: 1; padding: 10px 4px; font-size: 13px; border-radius: 10px; }
+  main { padding: 12px 16px calc(84px + env(safe-area-inset-bottom)); }
   input, select, button { font-size: 16px; }  /* iOS ne zumira polja od 16px */
   #q, #w-q { flex-basis: 100%; }
   .filters-grid { grid-template-columns: 1fr 1fr; }

@@ -10,7 +10,7 @@ from core.http import next_payload, session, text
 from core.models import Offer
 from core.shipping import marketplace_shipping
 
-from .base import Source
+from .base import Source, fetch_pages
 
 NAME, LABEL = "vinted", "Vinted"
 _ITEMS_KEY = '"items":{"items":'
@@ -74,11 +74,18 @@ async def details(offer: Offer) -> str:
         return parse_details(text(r))
 
 
+PAGE_SIZE = 96
+MAX_PAGES = 3  # Vinted brzo blokira, pa najviše ~290 oglasa po upitu
+
+
 async def search(query: str) -> list[Offer]:
     async with session() as s:
-        r = await s.get(f"https://www.vinted.hr/catalog?search_text={quote(query)}&order=newest_first")
-        r.raise_for_status()
-        return parse(text(r))
+        async def page(n: int) -> list[Offer]:
+            r = await s.get(f"https://www.vinted.hr/catalog?search_text={quote(query)}&order=newest_first&page={n}")
+            r.raise_for_status()
+            return parse(text(r))
+
+        return await fetch_pages(page, full_page=PAGE_SIZE, max_pages=MAX_PAGES)
 
 
 SOURCES = [Source(NAME, LABEL, "market", search, details=details)]

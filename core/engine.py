@@ -18,7 +18,7 @@ CACHE_TTL = {"market": 45, "shop": 600}  # s
 DEAL_THRESHOLD = 0.30                    # 30 % ispod referentne cijene = apsurdno
 EXACT_MIN = YEAR_MISSING                 # od ove ocjene ponuda se računa kao točan model
 SIMILAR_MIN = VARIANT                    # od ove ocjene se prikazuje kao varijanta
-DETAILS_MAX = 30                         # najviše oglasa po izvoru koje otvaramo radi opisa
+DETAILS_MAX = 20                         # najviše oglasa po izvoru koje otvaramo radi opisa
 DETAILS_PARALLEL = 8
 DETAILS_TTL = 24 * 3600                  # opis oglasa se rijetko mijenja
 

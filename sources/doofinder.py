@@ -7,7 +7,9 @@ from core.http import session
 from core.models import Offer
 from core.shipping import shop_shipping
 
-from .base import Source
+from .base import Source, fetch_pages
+
+PAGE_SIZE = 100
 
 SEARCH_URL = "https://eu1-search.doofinder.com/5/search"
 SHOPS = {  # name: (label, hashid, origin)
@@ -37,10 +39,13 @@ def _source(name: str) -> Source:
 
     async def search(query: str) -> list[Offer]:
         async with session() as s:
-            r = await s.get(SEARCH_URL, params={"hashid": hashid, "query": query, "rpp": 30},
-                            headers={"origin": origin, "referer": origin + "/"})
-            r.raise_for_status()
-            return [o for o in map(to_offer, r.json().get("results", [])) if o]
+            async def page(n: int) -> list[dict]:
+                r = await s.get(SEARCH_URL, params={"hashid": hashid, "query": query, "rpp": PAGE_SIZE, "page": n},
+                                headers={"origin": origin, "referer": origin + "/"})
+                r.raise_for_status()
+                return r.json().get("results", [])
+
+            return [o for o in map(to_offer, await fetch_pages(page, full_page=PAGE_SIZE)) if o]
 
     return Source(name, label, "shop", search)
 

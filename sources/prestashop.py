@@ -2,13 +2,16 @@
 
 Nova PrestaShop trgovina = jedan red u SHOPS + pravilo dostave u core/shipping.py.
 """
+import asyncio
 from urllib.parse import quote_plus
 
 from core.http import session
 from core.models import Offer
 from core.shipping import shop_shipping
 
-from .base import Source
+from .base import MAX_PAGES, Source
+
+PAGE_SIZE = 100  # trgovina može vratiti i manje po stranici
 
 SHOPS = {  # name: (label, search_url_template)
     "zonadepadel": ("Zona de Padel", "https://www.zonadepadel.com/search?controller=search&s={q}"),
@@ -38,9 +41,17 @@ def _source(name: str) -> Source:
 
     async def search(query: str) -> list[Offer]:
         async with session() as s:
-            r = await s.get(url_template.format(q=quote_plus(query)), headers=AJAX_HEADERS)
-            r.raise_for_status()
-            return [o for o in map(to_offer, r.json().get("products", [])) if o]
+            async def page(n: int) -> dict:
+                url = url_template.format(q=quote_plus(query)) + f"&resultsPerPage={PAGE_SIZE}&page={n}"
+                r = await s.get(url, headers=AJAX_HEADERS)
+                r.raise_for_status()
+                return r.json()
+
+            first = await page(1)  # trgovina sama kaže koliko ima stranica
+            pages_count = min(int((first.get("pagination") or {}).get("pages_count") or 1), MAX_PAGES)
+            rest = await asyncio.gather(*(page(n) for n in range(2, pages_count + 1)), return_exceptions=True)
+            products = [p for j in [first, *rest] if isinstance(j, dict) for p in j.get("products", [])]
+        return [o for o in map(to_offer, products) if o]
 
     return Source(name, label, "shop", search)
 

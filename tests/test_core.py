@@ -53,3 +53,28 @@ def test_search_terms_strip_year_and_add_brandless_for_markets():
     assert engine.search_terms("Bullpadel Vertex 04 2024", "market") == ["Bullpadel Vertex 04", "Vertex 04", "Vertex"]
     assert engine.search_terms("nox at10", "market") == ["nox at10", "at10"]  # bez duplikata
     assert engine.search_terms("padel reket Nox AT10", "shop") == ["Nox AT10"]
+
+
+def test_polite_gate_limits_parallel_requests_and_spacing():
+    import asyncio
+    import time
+    from core.http import _Gate
+
+    async def run():
+        gate, active, peak, starts = _Gate(parallel=2, spacing=0.05), 0, 0, []
+
+        async def job():
+            nonlocal active, peak
+            async with gate:
+                starts.append(time.monotonic())
+                active += 1
+                peak = max(peak, active)
+                await asyncio.sleep(0.02)
+                active -= 1
+
+        await asyncio.gather(*(job() for _ in range(5)))
+        return peak, starts
+
+    peak, starts = asyncio.run(run())
+    assert peak <= 2
+    assert all(b - a >= 0.045 for a, b in zip(starts, starts[1:]))

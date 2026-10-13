@@ -2,13 +2,15 @@
 <html lang="hr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Padel Hunter</title>
   <meta name="theme-color" content="#0f1115">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Padel Hunter">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -46,11 +48,27 @@
         <button data-v="new">Novo</button>
         <button data-v="used">Rabljeno</button>
       </div>
-      <label><input type="checkbox" id="f-similar"> prikaži varijante</label>
+      <select id="f-view" aria-label="Prikaz">
+        <option value="all">Sve ponude</option>
+        <option value="exact">Samo točan model</option>
+      </select>
+      <select id="f-sort" aria-label="Poredak">
+        <option value="total-asc">Ukupno (s dostavom) ↑</option>
+        <option value="total-desc">Ukupno (s dostavom) ↓</option>
+        <option value="price-asc">Cijena bez dostave ↑</option>
+        <option value="price-desc">Cijena bez dostave ↓</option>
+        <option value="deal">Najveći popust</option>
+        <option value="newest">Najnovije objavljeno</option>
+        <option value="match">Točnost podudaranja</option>
+        <option value="source">Izvor A–Ž</option>
+      </select>
       <label>max <input type="number" id="f-max" placeholder="€" min="0"></label>
       <button id="watch-btn" class="ghost" hidden>🔔 Prati ovaj model</button>
     </div>
-    <div id="sources" class="sources"></div>
+    <details id="sources-box">
+      <summary id="sources-sum" class="hint">Izvori</summary>
+      <div id="sources" class="sources"></div>
+    </details>
     <div id="summary" class="summary"></div>
     <div id="results"></div>
   </section>

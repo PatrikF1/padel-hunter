@@ -1,14 +1,62 @@
-"""Zajednički HTTP klijent. curl_cffi imitira pravi preglednik (TLS otisak), pa nas stranice ne blokiraju."""
+"""Zajednički HTTP klijent.
+
+curl_cffi imitira pravi preglednik (TLS otisak). Uz to je klijent PRISTOJAN: prema svakoj stranici ide
+ograničen broj istovremenih zahtjeva s razmakom, jer oglasnici (npr. Vinted) blokiraju prebrze klijente.
+"""
+import asyncio
 import json
 import re
+import time
+from urllib.parse import urlsplit
 
 from curl_cffi.requests import AsyncSession
 
 TIMEOUT = 10
+# host -> (najviše istovremenih zahtjeva, najmanji razmak između zahtjeva u sekundama)
+HOST_LIMITS = {
+    "www.vinted.hr": (2, 0.6),
+    "www.njuskalo.hr": (2, 0.4),
+    "www.index.hr": (3, 0.2),
+    "www.ebay.de": (1, 1.0),
+}
+DEFAULT_LIMIT = (6, 0.0)
+
+
+class _Gate:
+    def __init__(self, parallel: int, spacing: float):
+        self.sem, self.spacing = asyncio.Semaphore(parallel), spacing
+        self.lock, self.next_at = asyncio.Lock(), 0.0
+
+    async def __aenter__(self):
+        await self.sem.acquire()
+        async with self.lock:  # razmak između početaka zahtjeva
+            wait = self.next_at - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self.next_at = time.monotonic() + self.spacing
+
+    async def __aexit__(self, *exc):
+        self.sem.release()
+
+
+_gates: dict[str, _Gate] = {}
+
+
+def _gate(url: str) -> _Gate:
+    host = urlsplit(url).hostname or ""
+    if host not in _gates:
+        _gates[host] = _Gate(*HOST_LIMITS.get(host, DEFAULT_LIMIT))
+    return _gates[host]
+
+
+class PoliteSession(AsyncSession):
+    async def request(self, method, url, *args, **kwargs):
+        async with _gate(url):
+            return await super().request(method, url, *args, **kwargs)
 
 
 def session(impersonate: str = "chrome") -> AsyncSession:
-    return AsyncSession(impersonate=impersonate, timeout=TIMEOUT)
+    return PoliteSession(impersonate=impersonate, timeout=TIMEOUT)
 
 
 def next_payload(html: str) -> str:

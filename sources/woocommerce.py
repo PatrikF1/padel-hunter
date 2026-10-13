@@ -9,7 +9,9 @@ from core.http import session
 from core.models import Offer
 from core.shipping import shop_shipping, to_eur
 
-from .base import Source
+from .base import Source, fetch_pages
+
+PAGE_SIZE = 100  # najviše što Store API dopušta
 
 SHOPS = {  # name: (label, base_url)
     "padeltienda": ("Padel.tienda", "https://padel.tienda"),
@@ -38,9 +40,13 @@ def _source(name: str) -> Source:
 
     async def search(query: str) -> list[Offer]:
         async with session() as s:
-            r = await s.get(base + "/wp-json/wc/store/v1/products", params={"search": query, "per_page": 50})
-            r.raise_for_status()
-            products = r.json()
+            async def page(n: int) -> list[dict]:
+                r = await s.get(base + "/wp-json/wc/store/v1/products",
+                                params={"search": query, "per_page": PAGE_SIZE, "page": n})
+                r.raise_for_status()
+                return r.json()
+
+            products = await fetch_pages(page, full_page=PAGE_SIZE)
         return [o for o in [await to_offer(p) for p in products] if o]
 
     return Source(name, label, "shop", search)
