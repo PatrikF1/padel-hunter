@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Padel Hunter</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>🎾 Padel Hunter</h1>
+  <nav>
+    <button data-tab="search" class="active">Pretraga</button>
+    <button data-tab="watch">Praćenje <span id="watch-count"></span></button>
+    <button data-tab="settings">Postavke <span id="tg-dot" class="dot"></span></button>
+  </nav>
+</header>
+
+<main>
+  <!-- PRETRAGA -->
+  <section id="tab-search" class="tab active">
+    <form id="search-form" class="row">
+      <input id="q" placeholder="Model reketa, npr. Nox AT10 Genius 18K 2024" autocomplete="off" autofocus>
+      <button type="submit">Traži</button>
+    </form>
+    <div class="row filters">
+      <div class="seg" id="f-cond">
+        <button data-v="all" class="active">Sve</button>
+        <button data-v="new">Novo</button>
+        <button data-v="used">Rabljeno</button>
+      </div>
+      <label><input type="checkbox" id="f-similar"> prikaži varijante</label>
+      <label>max <input type="number" id="f-max" placeholder="€" min="0"></label>
+      <button id="watch-btn" class="ghost" hidden>🔔 Prati ovaj model</button>
+    </div>
+    <div id="sources" class="sources"></div>
+    <div id="summary" class="summary"></div>
+    <div id="results"></div>
+  </section>
+
+  <!-- PRAĆENJE -->
+  <section id="tab-watch" class="tab">
+    <form id="watch-form" class="row">
+      <input id="w-q" placeholder="Model koji pratiš">
+      <input id="w-max" type="number" min="0" placeholder="javi ispod € (ukupno)">
+      <label><input type="checkbox" id="w-used" checked> i rabljeno</label>
+      <label><input type="checkbox" id="w-similar"> i varijante</label>
+      <button type="submit">Dodaj</button>
+    </form>
+    <p class="hint">Oglasnici se provjeravaju svakih 90 s, trgovine svakih 15 min. Bez praga javlja samo
+      apsurdne cijene (≥ 30 % ispod uobičajene). App mora biti pokrenut.</p>
+    <div id="watches"></div>
+  </section>
+
+  <!-- POSTAVKE -->
+  <section id="tab-settings" class="tab">
+    <h2>Telegram obavijesti</h2>
+    <ol class="steps">
+      <li>U Telegramu otvori <b>@BotFather</b>, pošalji <code>/newbot</code> i prati upute.</li>
+      <li>BotFather ti da <b>token</b>, zalijepi ga ovdje i spremi. Token ostaje samo na tvom računalu.</li>
+      <li>Otvori svog novog bota i pošalji mu <code>/start</code>.</li>
+      <li>Klikni <b>Poveži</b>, pa <b>Pošalji test</b>.</li>
+    </ol>
+    <div class="row">
+      <input id="tg-token" type="password" placeholder="token bota">
+      <button id="tg-save">Spremi</button>
+      <button id="tg-detect" class="ghost">Poveži</button>
+      <button id="tg-test" class="ghost">Pošalji test</button>
+    </div>
+    <p id="tg-status" class="hint"></p>
+
+    <h2>eBay API <span class="hint">(preporučeno - bez njega eBay povremeno blokira pretragu)</span></h2>
+    <ol class="steps">
+      <li>Prijavi se na <b>developer.ebay.com</b> (besplatno) → <b>Application Keys</b> → <b>Production</b> → <b>Create a keyset</b>.</li>
+      <li>Kopiraj <b>App ID (Client ID)</b> i <b>Cert ID (Client Secret)</b> ovdje.</li>
+    </ol>
+    <div class="row">
+      <input id="ebay-id" placeholder="App ID (Client ID)">
+      <input id="ebay-secret" type="password" placeholder="Cert ID (Client Secret)">
+      <button id="ebay-save">Spremi</button>
+    </div>
+    <p id="ebay-status" class="hint"></p>
+
+    <h2>Izvori</h2>
+    <div id="health"></div>
+  </section>
+</main>
+
+<template id="offer-tpl">
+  <a class="offer" target="_blank" rel="noopener">
+    <img loading="lazy" alt="">
+    <div class="body">
+      <div class="title"></div>
+      <div class="meta"></div>
+      <div class="note"></div>
+    </div>
+    <div class="price">
+      <div class="total"></div>
+      <div class="breakdown"></div>
+    </div>
+  </a>
+</template>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+"""Index oglasi - JSON API koji koristi i njihova web stranica (treba samo kolačić s naslovnice)."""
+from core.http import session
+from core.matcher import looks_new
+from core.models import Offer
+from core.shipping import marketplace_shipping
+
+from .base import Source
+
+NAME, LABEL = "index", "Index oglasi"
+BASE = "https://www.index.hr/oglasi"
+_url_slugs: dict[tuple[str, str], tuple[str, str]] = {}  # (module, category) -> ("sport", "tenis")
+
+
+async def _load_url_slugs(s) -> None:
+    """URL oglasa koristi hrvatske nazive modula/kategorije - mapiranje čitamo iz njihove konfiguracije."""
+    if _url_slugs:
+        return
+    modules = (await s.get(BASE + "/api/configuration/module")).json()
+    categories = (await s.get(BASE + "/api/configuration/category")).json()
+    module_hr = {m["name"]: m["nameHr"] for m in modules}
+    for c in categories:
+        _url_slugs[(c["module"], c["name"])] = (module_hr.get(c["module"], c.get("moduleHr", "")), c["nameHr"])
+
+
+def parse(data: dict) -> list[Offer]:
+    ship, note, exact = marketplace_shipping(NAME)
+    offers = []
+    for ad in data.get("data", []):
+        if not ad.get("price"):
+            continue
+        module, category = _url_slugs.get((ad.get("module"), ad.get("category")), ("sport", "tenis"))
+        images = ad.get("images") or []
+        title = ad.get("title", "")
+        offers.append(Offer(
+            source=NAME, source_name=LABEL, id=str(ad.get("code") or ad.get("id")), title=title,
+            url=f"{BASE}/{module}/{category}/oglas/{ad.get('smartLink')}/{ad.get('code')}",
+            price=float(ad["price"]), condition="new" if looks_new(title) else "used",
+            image=f"{BASE}/api/image/direct/{images[0]}?m=card_large" if images else "",
+            shipping=ship, shipping_note=note, shipping_exact=exact,
+            location=ad.get("cityName") or "", posted=ad.get("postedTime") or "",
+        ))
+    return offers
+
+
+async def search(query: str) -> list[Offer]:
+    async with session() as s:
+        await s.get(BASE)
+        await _load_url_slugs(s)
+        r = await s.get(BASE + "/api/aditem", params={"text": query, "sortOption": 4, "itemPerPage": 48},
+                        headers={"accept": "application/json", "referer": BASE + "/pretraga"})
+        r.raise_for_status()
+        return parse(r.json())
+
+
+SOURCES = [Source(NAME, LABEL, "market", search)]

@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# lokalni podaci: watchlist, viđeni oglasi i Telegram token - nikad na GitHub
+data.db
+data.db-*
+.claude/
