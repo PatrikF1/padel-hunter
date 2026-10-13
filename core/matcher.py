@@ -73,29 +73,29 @@ def tokens(s: str) -> list[str]:
     return out
 
 
-def _years(toks: list[str]) -> set[int]:
+def years(toks: list[str]) -> set[int]:
     """2024 -> 2024;  dvoznamenkasti broj iza broja modela ('Vertex 04 25', '26V') -> 2025 / 2026."""
-    years, prev_is_num = set(), False
+    found, prev_is_num = set(), False
     for t in toks:
         if t.isdigit():
             n = int(t)
             if 2015 <= n <= 2035:
-                years.add(n)
+                found.add(n)
             elif prev_is_num and 15 <= n <= 35:
-                years.add(2000 + n)
+                found.add(2000 + n)
         prev_is_num = t.isdigit()
-    return years
+    return found
 
 
 def parse_query(q: str) -> dict:
     toks = tokens(q)
-    years = _years(toks)
-    year_toks = {str(y) for y in years} | {str(y - 2000) for y in years}
+    query_years = years(toks)
+    year_toks = {str(y) for y in query_years} | {str(y - 2000) for y in query_years}
     core = [t for t in toks if t not in year_toks and t not in BRANDS and t not in STOPWORDS]
     # broj koji slijedi riječ modela mora biti točan: "vertex 4" -> ("vertex", "4")
     pairs = [(core[i - 1], core[i]) for i in range(1, len(core)) if core[i].isdigit() and not core[i - 1].isdigit()]
     return {
-        "raw": q, "tokens": toks, "core": core, "years": years, "pairs": pairs,
+        "raw": q, "tokens": toks, "core": core, "years": query_years, "pairs": pairs,
         "brand": next((t for t in toks if t in BRANDS), None),
     }
 
@@ -135,7 +135,10 @@ def _reject_model(q: dict, toks: list[str]) -> str | None:
 
 
 def _variants(q: dict, toks: list[str]) -> set[str]:
-    found = (set(toks) & VARIANTS) - set(q["tokens"])
+    """Oznake verzija u naslovu koje NISU u upitu. Uz opći popis koristi i oznake iz kataloga
+    za taj model (q["version_words"], npr. Metalbone: zz, reserve, superlight...)."""
+    known = VARIANTS | q.get("version_words", set())
+    found = (set(toks) & known) - set(q["tokens"])
     for short in found & SHORT_VARIANTS:
         if not any(t == short and i > 0 and toks[i - 1].isdigit() for i, t in enumerate(toks)):
             found.discard(short)
@@ -153,7 +156,7 @@ def match(q: dict, title: str, category: str = "") -> tuple[float, str]:
         return NO_MATCH, reason
 
     score, notes = EXACT, []
-    title_years = _years(toks)
+    title_years = years(toks)
     if q["years"]:
         if title_years and not title_years & q["years"]:
             return NO_MATCH, "druga godina: " + ", ".join(map(str, sorted(title_years)))

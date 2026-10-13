@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import db, engine, telegram, watcher
+from core import catalog, db, engine, telegram, watcher
 from core.matcher import parse_query
 from sources import SOURCES
 
@@ -21,9 +22,11 @@ STATIC = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(_app):
-    task = asyncio.create_task(watcher.loop())
+    catalog.load()
+    tasks = [asyncio.create_task(watcher.loop()), asyncio.create_task(catalog.refresh_if_stale())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="Padel Hunter", lifespan=lifespan)
@@ -61,6 +64,17 @@ def parse(q: str):
     pq = parse_query(q)
     pq["years"] = sorted(pq["years"])
     return pq
+
+
+# ---- katalog (filteri i odabir točne verzije) ----
+@app.get("/api/catalog")
+def get_catalog():
+    return {"updated": catalog.catalog.updated, "rackets": [asdict(r) for r in catalog.catalog.rackets]}
+
+
+@app.post("/api/catalog/refresh")
+async def refresh_catalog():
+    return {"count": await catalog.refresh()}
 
 
 @app.get("/api/health")

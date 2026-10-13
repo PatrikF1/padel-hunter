@@ -226,6 +226,13 @@ async function loadHealth() {
 }
 
 // ---------- start ----------
+initCatalog({
+  onPick(racket) {  // klik na verziju iz kataloga = pretraga točno te verzije
+    $("#q").value = racket.title;
+    $("#finder").open = false;
+    runSearch(racket.title);
+  },
+});
 loadSettings();
 loadWatches();
 const initial = new URLSearchParams(location.search).get("q");

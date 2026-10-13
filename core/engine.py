@@ -8,6 +8,7 @@ from typing import AsyncIterator
 from sources import SOURCES
 from sources.base import Source
 
+from . import catalog
 from .matcher import BRANDS, STOPWORDS, VARIANT, YEAR_MISSING, match, parse_query, tokens
 from .models import Offer
 
@@ -108,6 +109,7 @@ async def _safe(src: Source, q: str, pq: dict, use_cache: bool):
 async def stream(q: str, use_cache: bool = True, only: set[str] | None = None) -> AsyncIterator[tuple]:
     """Vraća (izvor, ponude, greška) čim pojedini izvor završi - UI prikazuje rezultate odmah."""
     pq = parse_query(q)
+    pq["version_words"] = catalog.version_words(pq)
     sources = [s for s in SOURCES if not only or s.name in only]
     for fut in asyncio.as_completed([_safe(s, q, pq, use_cache) for s in sources]):
         yield await fut

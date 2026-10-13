@@ -11,7 +11,7 @@ from .base import Source
 
 SEARCH_URL = "https://eu1-search.doofinder.com/5/search"
 SHOPS = {  # name: (label, hashid, origin)
-    "padelnuestro": ("Padel Nuestro", "3680782b48e397920a52a2287bc777a2", "https://www.padelnuestro.com"),
+    "padelnuestro": ("Padel Nuestro", "7e6b0c88e88ddd9134bc543a8a37572e", "https://www.padelnuestro.com"),  # /int/ trgovina
     "padelreference": ("Padel Reference", "9fb34dfbeeb4c84220e4aebc3739fcc3", "https://www.padelreference.com"),
 }
 IN_STOCK = {"in stock", "instock", "available"}

@@ -24,6 +24,23 @@ Provjera iz terminala (radi li svaki izvor):
 
 Testovi: `.venv\Scripts\python -m pip install -r requirements-dev.txt`, pa `.venv\Scripts\python -m pytest`.
 
+## Odabir točne verzije (katalog)
+
+Na vrhu stranice je **katalog s ~800 reketa iz 31 brenda** (izvor: Padel Nuestro, osvježava se svaka 3 dana).
+Kaskadni filteri: **brend → model → godina → oblik → balans → razina → tip igre → površina → jezgra → spol**,
+plus pretraga po nazivu. Klik na verziju pokreće pretragu **točno te verzije**.
+
+Katalog za svaki model zna sve oznake verzija. Za Metalbone to su `carbon, ctrl, hrd, team, light, zz,
+reserve, superlight, pro, edt`, pa kod pretrage "Metalbone CTRL 3.4 2025":
+
+| oglas | rezultat |
+|---|---|
+| Metalbone CTRL 3.4 2025 Ale Galán | ✅ točan (imena igrača i boje se ignoriraju) |
+| Metalbone **Carbon** CTRL 3.4 2025 | ↪ varijanta (prikazuje se samo uz "prikaži varijante") |
+| Metalbone CTRL **3.3 2024** | ❌ odbačen |
+
+Novi izvor kataloga = async funkcija koja vraća `list[Racket]`, dodana u `PROVIDERS` u [core/catalog.py](core/catalog.py).
+
 ## Izvori
 
 | Izvor | Vrsta | Kako | Dostava u HR |
@@ -65,13 +82,14 @@ upit ──► engine.stream()  ── paralelno svi izvori (timeout 15 s, cache
 | [app.py](app.py) | FastAPI rute (pretraga kao SSE stream, watchlist, postavke) |
 | [core/models.py](core/models.py) | `Offer`, jedna ponuda; `total = cijena + naknade + dostava` |
 | [core/matcher.py](core/matcher.py) | prepoznavanje točnog modela; **rječnici** brendova, varijanti i opreme |
+| [core/catalog.py](core/catalog.py) | katalog reketa sa specifikacijama; oznake verzija po modelu |
 | [core/engine.py](core/engine.py) | paralelno pokretanje izvora, cache, zdravlje izvora, rangiranje |
 | [core/shipping.py](core/shipping.py) | pravila dostave u HR, tečaj |
 | [core/watcher.py](core/watcher.py) | pozadinsko praćenje i obavijesti |
 | [core/telegram.py](core/telegram.py) | slanje poruka, povezivanje chata |
 | [core/db.py](core/db.py) | SQLite (`data.db`, lokalno, nije na GitHubu) |
 | [sources/](sources/) | po jedan modul po izvoru ili platformi |
-| [static/](static/) | sučelje (HTML + CSS + JS, bez build koraka) |
+| [static/](static/) | sučelje (HTML + CSS + JS, bez build koraka); filteri kataloga u `catalog.js` |
 
 ## Proširenja
 

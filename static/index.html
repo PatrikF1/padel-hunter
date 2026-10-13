@@ -19,8 +19,20 @@
 <main>
   <!-- PRETRAGA -->
   <section id="tab-search" class="tab active">
+    <details id="finder" open>
+      <summary>🎯 Odaberi točnu verziju <span class="hint"></span></summary>
+      <div class="filters-grid"></div>
+      <div class="row">
+        <input id="v-text" placeholder="naziv sadrži, npr. ctrl 3.4">
+        <span id="v-count" class="hint"></span>
+        <button id="v-reset" type="button" class="ghost">Poništi filtere</button>
+      </div>
+      <div id="versions" class="versions"></div>
+    </details>
+
     <form id="search-form" class="row">
-      <input id="q" placeholder="Model reketa, npr. Nox AT10 Genius 18K 2024" autocomplete="off" autofocus>
+      <input id="q" list="titles" placeholder="ili upiši model, npr. Nox AT10 Genius 18K 2024" autocomplete="off">
+      <datalist id="titles"></datalist>
       <button type="submit">Traži</button>
     </form>
     <div class="row filters">
@@ -101,6 +113,7 @@
   </a>
 </template>
 
+<script src="/static/catalog.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
