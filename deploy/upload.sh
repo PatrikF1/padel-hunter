@@ -12,8 +12,8 @@ echo "==> Pakiram kod (git archive - samo commitane datoteke, bez data.db i tajn
 git archive --format=tar.gz -o "$ARCHIVE" HEAD
 
 echo "==> Šaljem na $TARGET"
-scp -q "$ARCHIVE" "$TARGET:padel-hunter.tar.gz"
+scp -q -o StrictHostKeyChecking=accept-new "$ARCHIVE" "$TARGET:padel-hunter.tar.gz"
 rm -f "$ARCHIVE"
 
 echo "==> Raspakiravam i instaliram na serveru"
-ssh -t "$TARGET" 'mkdir -p ~/padel-hunter && tar -xzf ~/padel-hunter.tar.gz -C ~/padel-hunter && rm ~/padel-hunter.tar.gz && bash ~/padel-hunter/deploy/server_install.sh'
+ssh -o StrictHostKeyChecking=accept-new "$TARGET" 'mkdir -p ~/padel-hunter && tar -xzf ~/padel-hunter.tar.gz -C ~/padel-hunter && rm ~/padel-hunter.tar.gz && bash ~/padel-hunter/deploy/server_install.sh'

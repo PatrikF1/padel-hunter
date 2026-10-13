@@ -40,7 +40,7 @@ U Git Bashu, u mapi projekta:
 bash deploy/upload.sh ubuntu@<PUBLIC_IP>
 ```
 
-Prvi put pita *Are you sure you want to continue connecting?*, pa upiši `yes`.
+Skripta pri prvom spajanju sama prihvati ključ novog servera.
 
 ## 4. Tailscale na serveru (jednom)
 
