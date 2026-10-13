@@ -3,6 +3,9 @@
 Oglasnici se provjeravaju svakih ~90 s, trgovine svakih 15 min. Kad se pojavi NOVI oglas ili PADNE cijena,
 a ukupna cijena je ispod tvog praga (ili je apsurdno niska ako prag nije zadan) -> Telegram poruka.
 Prvi krug samo zapamti postojeće oglase (bez spama) i javi trenutno najbolju ponudu.
+
+Ne stiže obavijest? Provjeri: Postavke -> Telegram (Pošalji test), Praćenje -> "provjereno u" (radi li petlja),
+i konzolu (logger "watcher").
 """
 import asyncio
 import logging
@@ -11,14 +14,14 @@ import time
 from sources import SOURCES
 
 from . import db, engine, telegram
+from .db import Watch
 from .models import Offer
 
-MARKET_EVERY = 90          # s
-SHOP_EVERY = 15 * 60       # s
-TICK = 15                  # s - koliko često petlja provjerava je li nešto "na redu"
-FAIL_ALERT = 3             # uzastopnih grešaka izvora prije upozorenja
-PRICE_DROP_MIN = 0.5       # EUR - manje promjene ignoriramo
-INIT_KEY = "__init__"      # oznaka da je prvi krug za watch gotov
+MARKET_EVERY_SECONDS = 90
+SHOP_EVERY_SECONDS = 15 * 60
+LOOP_TICK_SECONDS = 15         # koliko često petlja provjerava je li nešto "na redu"
+FAILS_BEFORE_ALERT = 3         # uzastopnih grešaka izvora prije upozorenja na Telegram
+PRICE_DROP_MIN = 0.5           # EUR - manje promjene cijene ignoriramo
 
 MARKETS = {s.name for s in SOURCES if s.kind == "market"}
 SHOPS = {s.name for s in SOURCES if s.kind == "shop"}
@@ -27,90 +30,92 @@ _alerted_sources: set[str] = set()
 
 
 # ---------- pravila ----------
-def is_relevant(o: Offer, w: dict) -> bool:
-    min_match = engine.SIMILAR_MIN if w["include_similar"] else engine.EXACT_MIN
-    return o.match >= min_match and (w["include_used"] or o.condition == "new")
+def is_relevant(offer: Offer, watch: Watch) -> bool:
+    """Spada li ponuda u ovo praćenje (točan model ili i varijante; i rabljeno ili samo novo)."""
+    min_match = engine.SIMILAR_MIN if watch.include_similar else engine.EXACT_MIN
+    return offer.match >= min_match and (watch.include_used or offer.condition == "new")
 
 
-def is_notifiable(o: Offer, w: dict) -> bool:
-    return o.total <= w["max_total"] if w["max_total"] else o.is_deal
+def is_notifiable(offer: Offer, watch: Watch) -> bool:
+    """Isplati li se javiti: ispod praga, ili apsurdno jeftino ako prag nije zadan."""
+    return offer.total <= watch.max_total if watch.max_total else offer.is_deal
 
 
 # ---------- jedna provjera ----------
-async def check(w: dict, only: set[str], first: bool) -> None:
-    offers, ref = await engine.search_all(w["query"], use_cache=False, only=only)
-    if ref and (first or only == SHOPS):  # referentnu cijenu računamo kad imamo trgovine
-        w["ref"] = ref
-        db.x("UPDATE watches SET ref=? WHERE id=?", (ref, w["id"]))
-    engine.mark_deals(offers, w.get("ref"))
-    offers = [o for o in offers if is_relevant(o, w)]
+async def check(watch: Watch, sources: set[str], first: bool) -> None:
+    offers, reference = await engine.search_all(watch.query, use_cache=False, only=sources)
+    if reference and (first or sources == SHOPS):  # uobičajenu cijenu računamo kad imamo trgovine
+        watch.ref = reference
+        db.set_reference_price(watch.id, reference)
+    engine.mark_deals(offers, watch.ref)
+    offers = [o for o in offers if is_relevant(o, watch)]
 
     if first:
-        db.x("INSERT OR IGNORE INTO seen VALUES(?,?,?,?)", (w["id"], INIT_KEY, 0, time.time()))
-    await _process_offers(w, offers, notify=not first)
-    _update_best(w, offers)
+        db.mark_first_check_done(watch.id)
+    await _notify_new_and_cheaper(watch, offers, notify=not first)
+    _remember_best(watch, offers)
 
     if first and offers:
         best = min(offers, key=lambda o: o.total)
-        await telegram.send(telegram.format_offer(best, f"👀 Pratim: {w['query']} - trenutno najbolje"))
+        await telegram.send(telegram.format_offer(best, f"👀 Pratim: {watch.query} - trenutno najbolje"))
 
 
-async def _process_offers(w: dict, offers: list[Offer], notify: bool) -> None:
-    seen = {r["key"]: r["total"] for r in db.q("SELECT key, total FROM seen WHERE watch_id=?", (w["id"],))}
-    for o in offers:
-        old = seen.get(o.key)
-        if old is None:
-            db.x("INSERT OR REPLACE INTO seen VALUES(?,?,?,?)", (w["id"], o.key, o.total, time.time()))
-            if notify and is_notifiable(o, w):
-                await telegram.send(telegram.format_offer(o, f"🆕 NOVO: {w['query']}"))
-        elif o.total < old - PRICE_DROP_MIN:
-            db.x("UPDATE seen SET total=? WHERE watch_id=? AND key=?", (o.total, w["id"], o.key))
-            if notify and is_notifiable(o, w):
-                header = f"📉 PAD CIJENE ({old:.2f} → {o.total:.2f} €): {w['query']}"
-                await telegram.send(telegram.format_offer(o, header))
+async def _notify_new_and_cheaper(watch: Watch, offers: list[Offer], notify: bool) -> None:
+    seen = db.seen_totals(watch.id)
+    for offer in offers:
+        previous_total = seen.get(offer.key)
+        if previous_total is None:
+            db.remember_offer(watch.id, offer.key, offer.total)
+            if notify and is_notifiable(offer, watch):
+                await telegram.send(telegram.format_offer(offer, f"🆕 NOVO: {watch.query}"))
+        elif offer.total < previous_total - PRICE_DROP_MIN:
+            db.update_seen_total(watch.id, offer.key, offer.total)
+            if notify and is_notifiable(offer, watch):
+                header = f"📉 PAD CIJENE ({previous_total:.2f} → {offer.total:.2f} €): {watch.query}"
+                await telegram.send(telegram.format_offer(offer, header))
 
 
-def _update_best(w: dict, offers: list[Offer]) -> None:
+def _remember_best(watch: Watch, offers: list[Offer]) -> None:
     best = min(offers, key=lambda o: o.total, default=None)
-    if best and (w["best_total"] is None or best.total < w["best_total"]):
-        db.x("UPDATE watches SET best_total=?, best_url=? WHERE id=?", (best.total, best.url, w["id"]))
+    if best and (watch.best_total is None or best.total < watch.best_total):
+        db.set_best_offer(watch.id, best.total, best.url)
 
 
 # ---------- zdravlje izvora ----------
 async def alert_broken_sources() -> None:
-    for name, h in engine.health.items():
-        if h["fails"] >= FAIL_ALERT and name not in _alerted_sources:
+    for name, status in engine.health.items():
+        if status.fails >= FAILS_BEFORE_ALERT and name not in _alerted_sources:
             _alerted_sources.add(name)
-            await telegram.send(f"⚠️ Izvor <b>{h['label']}</b> ne radi ({h['fails']}x zaredom): {h['error']}")
-        elif h["ok"] and name in _alerted_sources:
+            await telegram.send(f"⚠️ Izvor <b>{status.label}</b> ne radi ({status.fails}x zaredom): {status.error}")
+        elif status.ok and name in _alerted_sources:
             _alerted_sources.discard(name)
-            await telegram.send(f"✅ Izvor <b>{h['label']}</b> opet radi")
+            await telegram.send(f"✅ Izvor <b>{status.label}</b> opet radi")
 
 
 # ---------- petlja ----------
-async def _run_due(w: dict) -> None:
+async def _run_if_due(watch: Watch) -> None:
     now = time.time()
-    if not db.q("SELECT 1 FROM seen WHERE watch_id=? LIMIT 1", (w["id"],)):
-        db.x("UPDATE watches SET last_market=?, last_shop=? WHERE id=?", (now, now, w["id"]))
-        await check(w, MARKETS | SHOPS, first=True)
+    if not db.first_check_done(watch.id):
+        db.mark_checked(watch.id, markets=True, shops=True)
+        await check(watch, MARKETS | SHOPS, first=True)
         return
-    if now - w["last_market"] >= MARKET_EVERY:
-        db.x("UPDATE watches SET last_market=? WHERE id=?", (now, w["id"]))
-        await check(w, MARKETS, first=False)
-    if now - w["last_shop"] >= SHOP_EVERY:
-        db.x("UPDATE watches SET last_shop=? WHERE id=?", (now, w["id"]))
-        await check(w, SHOPS, first=False)
+    if now - watch.last_market >= MARKET_EVERY_SECONDS:
+        db.mark_checked(watch.id, markets=True)
+        await check(watch, MARKETS, first=False)
+    if now - watch.last_shop >= SHOP_EVERY_SECONDS:
+        db.mark_checked(watch.id, shops=True)
+        await check(watch, SHOPS, first=False)
 
 
 async def loop() -> None:
     while True:
-        for w in db.q("SELECT * FROM watches WHERE active=1"):
+        for watch in db.active_watches():
             try:
-                await _run_due(w)
+                await _run_if_due(watch)
             except Exception:
-                log.exception("praćenje '%s' nije uspjelo", w["query"])
+                log.exception("praćenje '%s' nije uspjelo", watch.query)
         try:
             await alert_broken_sources()
         except Exception:
             log.exception("slanje upozorenja nije uspjelo")
-        await asyncio.sleep(TICK)
+        await asyncio.sleep(LOOP_TICK_SECONDS)

@@ -29,19 +29,18 @@ def parse(html: str) -> list[Offer]:
 
     offers = []
     for item in items:
-        p = item.get("productItem") or {}
-        if not p.get("id"):
+        product = item.get("productItem") or {}
+        if not product.get("id"):
             continue
-        price = float(p["price"]["amount"])
-        total = float((p.get("totalItemPrice") or {}).get("amount") or price)  # cijena + zaštita kupca
-        state = conditions.get(str(p["id"]), "")
+        price = float(product["price"]["amount"])
+        total = float((product.get("totalItemPrice") or {}).get("amount") or price)  # cijena + zaštita kupca
+        state = conditions.get(str(product["id"]), "")
         offers.append(Offer(
-            source=NAME, source_name=LABEL, id=str(p["id"]), title=p.get("title", ""),
-            url="https://www.vinted.hr" + p.get("url", ""), price=price, fees=round(total - price, 2),
+            source=NAME, source_name=LABEL, id=str(product["id"]), title=product.get("title", ""),
+            url="https://www.vinted.hr" + product.get("url", ""), price=price, fees=round(total - price, 2),
             condition="new" if state.startswith(_NEW_STATES) else "used",
-            image=p.get("thumbnailUrl") or "",
+            image=product.get("thumbnailUrl") or "",
             shipping=ship, shipping_note=note, shipping_exact=exact,
-            extra={"stanje": state},
         ))
     return offers
 
@@ -68,10 +67,10 @@ def parse_details(html: str) -> str:
 
 
 async def details(offer: Offer) -> str:
-    async with session() as s:
-        r = await s.get(offer.url)
-        r.raise_for_status()
-        return parse_details(text(r))
+    async with session() as client:
+        response = await client.get(offer.url)
+        response.raise_for_status()
+        return parse_details(text(response))
 
 
 PAGE_SIZE = 96
@@ -79,11 +78,11 @@ MAX_PAGES = 3  # Vinted brzo blokira, pa najviše ~290 oglasa po upitu
 
 
 async def search(query: str) -> list[Offer]:
-    async with session() as s:
+    async with session() as client:
         async def page(n: int) -> list[Offer]:
-            r = await s.get(f"https://www.vinted.hr/catalog?search_text={quote(query)}&order=newest_first&page={n}")
-            r.raise_for_status()
-            return parse(text(r))
+            response = await client.get(f"https://www.vinted.hr/catalog?search_text={quote(query)}&order=newest_first&page={n}")
+            response.raise_for_status()
+            return parse(text(response))
 
         return await fetch_pages(page, full_page=PAGE_SIZE, max_pages=MAX_PAGES)
 

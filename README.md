@@ -96,32 +96,56 @@ Ponude koje se šalju izvan EU (npr. iz UK-a) se izbacuju jer se na njih plaća 
 ## Kako radi
 
 ```
-upit ──► engine.stream()  ── paralelno svi izvori (timeout 15 s, cache 45 s / 10 min)
+upit ──► engine.stream()  ── svi izvori paralelno (timeout 15 s, cache 45 s oglasnici / 10 min trgovine)
              │
-             ├─ source.search(term)        ► sirove ponude (Offer)
-             ├─ matcher.match()            ► točan model / godina / varijanta / odbaci
-             ├─ source.enrich() [opcija]   ► stvarna dostava samo za pogođene ponude
-             └─ engine.mark_deals()        ► "apsurdno" = ≥30 % ispod medijana novih ponuda
+             │  za svaki izvor: engine.run_source()
+             ├─ 1. fetch        source.search(term)      ► sve ponude za upit (Offer), više stranica
+             ├─ 2. match        matcher.match()          ► točan model / varijanta / odbaci (+ razlog)
+             ├─ 3. deep_check   source.details()         ► opis oglasa kad naslov nije dovoljan
+             └─ 4. enrich       source.enrich()          ► stvarna dostava (Shopify košarica)
+                    │
+             engine.reference_price() + mark_deals()     ► "apsurdno" = ≥30 % ispod uobičajene cijene
                     │
         ┌───────────┴───────────┐
-   SSE /api/search          watcher.loop()  ── oglasnici svakih 90 s, trgovine 15 min
-   (UI prikazuje odmah)          └─ novo / pad cijene ispod praga ► telegram.send()
+   /api/search (SSE)        watcher.loop()  ── oglasnici svakih 90 s, trgovine 15 min
+   UI prikazuje odmah            └─ novo / pad cijene ispod praga ► telegram.send()
 ```
 
-| Datoteka | Odgovornost |
+### Mapa koda
+
+| Datoteka | Što radi | Glavne funkcije / klase |
+|---|---|---|
+| [app.py](app.py) | web server, samo povezuje dijelove | rute `/api/...` |
+| [core/models.py](core/models.py) | jedna ponuda | `Offer` (`total` = cijena + naknade + dostava) |
+| [core/matcher.py](core/matcher.py) | je li oglas traženi reket | `parse_query` → `WantedRacket`, `match` → `MatchResult`; **rječnici** brendova, verzija, opreme |
+| [core/engine.py](core/engine.py) | pretraga kroz sve izvore | `run_source`, `deep_check`, `reference_price`, `explain`; `SourceHealth` |
+| [core/catalog.py](core/catalog.py) | katalog reketa za filtere | `Racket`, `PROVIDERS`, `merge`, `version_words` |
+| [core/shipping.py](core/shipping.py) | dostava u HR | `SHOP_RULES` (cjenici), `MARKETPLACE_EST`, `to_eur` |
+| [core/watcher.py](core/watcher.py) | praćenje u pozadini | `loop`, `check`, `is_relevant`, `is_notifiable` |
+| [core/telegram.py](core/telegram.py) | obavijesti | `send`, `detect_chat`, `format_offer` |
+| [core/db.py](core/db.py) | baza `data.db` - **sav SQL je ovdje** | `Watch`, `list_watches`, `remember_offer`... |
+| [core/http.py](core/http.py) | HTTP klijent | `session` (imitira preglednik, `HOST_LIMITS` = pristojnost prema stranicama), `eur` |
+| [core/access.py](core/access.py) | pristup s mobitela | tajni ključ, QR kod |
+| [sources/base.py](sources/base.py) | sučelje izvora | `Source`, `fetch_pages` |
+| [sources/*.py](sources/) | po jedan modul po izvoru ili platformi | svaki ima listu `SOURCES` |
+| [static/app.js](static/app.js) | sučelje: pretraga, prikaz, praćenje, postavke | `runSearch`, `renderResults`, `offerCard`, `SORTS` |
+| [static/catalog.js](static/catalog.js) | filteri kataloga | `SPEC_FILTERS`, `RATING_FILTERS`, `initCatalog` |
+| [tests/](tests/) | primjeri koji moraju raditi | `pytest` |
+
+## Kad nešto ne radi
+
+| Problem | Gdje gledati |
 |---|---|
-| [app.py](app.py) | FastAPI rute (pretraga kao SSE stream, watchlist, postavke) |
-| [core/models.py](core/models.py) | `Offer`, jedna ponuda; `total = cijena + naknade + dostava` |
-| [core/matcher.py](core/matcher.py) | prepoznavanje točnog modela; **rječnici** brendova, varijanti i opreme |
-| [core/catalog.py](core/catalog.py) | katalog reketa sa specifikacijama; oznake verzija po modelu |
-| [core/access.py](core/access.py) | pristup s mobitela: tajni ključ, LAN adresa, QR kod |
-| [core/engine.py](core/engine.py) | paralelno pokretanje izvora, cache, zdravlje izvora, rangiranje |
-| [core/shipping.py](core/shipping.py) | pravila dostave u HR, tečaj |
-| [core/watcher.py](core/watcher.py) | pozadinsko praćenje i obavijesti |
-| [core/telegram.py](core/telegram.py) | slanje poruka, povezivanje chata |
-| [core/db.py](core/db.py) | SQLite (`data.db`, lokalno, nije na GitHubu) |
-| [sources/](sources/) | po jedan modul po izvoru ili platformi |
-| [static/](static/) | sučelje (HTML + CSS + JS, bez build koraka); filteri kataloga u `catalog.js` |
+| Izvor ne vraća ništa / crveni ✕ | **Postavke → Izvori** (točna greška), konzola servera (`engine: vinted: izvor nije uspio ...`). `403`/`429` = stranica nas privremeno blokira (prođe samo); inače se promijenila stranica → popravi `parse()` u `sources/<izvor>.py` |
+| Oglas koji JE traženi reket ne prikazuje se | otvori `http://127.0.0.1:8777/api/debug/explain?q=<upit>&source=<izvor>` - svaka ponuda tog izvora s ocjenom i razlogom (`note`, `reason`) |
+| Oglas koji NIJE traženi reket prikazuje se kao točan | `http://127.0.0.1:8777/api/debug/match?q=<upit>&title=<naslov oglasa>` → dopuni rječnik u `core/matcher.py` i dodaj primjer u `tests/test_matcher.py` |
+| Upit je krivo shvaćen (brend, model, godina) | `http://127.0.0.1:8777/api/debug/parse?q=<upit>` |
+| Kriva cijena dostave | `core/shipping.py` (`SHOP_RULES`) ili, za Shopify, `sources/shopify.py` (`_quote`) |
+| Ne stiže Telegram poruka | Postavke → "Pošalji test" (pokaže grešku Telegrama); `core/watcher.py` |
+| Sučelje se čudno ponaša | konzola preglednika (F12); `static/app.js` |
+
+Brza provjera svih izvora iz terminala: `.venv\Scripts\python check.py "nox at10"`.
+Provjera koda prije commita: `.venv\Scripts\python -m pytest` i `.venv\Scripts\python -m pyflakes app.py core sources tests`.
 
 ## Proširenja
 
@@ -169,4 +193,5 @@ Upute su u aplikaciji, na kartici **Postavke**. Tokeni i ključevi spremaju se s
   (Cloudflare), pa nisu uključeni.
 - Stranice mijenjaju strukturu. Kad izvor prestane raditi, vidi se u Postavkama → Izvori, a nakon
   3 uzastopne greške stiže Telegram upozorenje.
-- Praćenje radi dok je app pokrenut na računalu.
+- Praćenje radi dok je app pokrenut na računalu (Tailscale omogućuje pristup s mobitela izvan kuće,
+  ali računalo i dalje mora biti upaljeno).

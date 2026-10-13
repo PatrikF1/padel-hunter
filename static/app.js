@@ -1,93 +1,116 @@
-// Padel Hunter - frontend (bez frameworka). Logika rangiranja je ista kao u core/engine.py.
+// Padel Hunter - sučelje (čisti JavaScript, bez frameworka).
+// Odjeljci: pomoćne funkcije · tabovi · pretraga · prikaz rezultata · praćenje · postavke · start.
+// Izračun "uobičajene cijene" i apsurdnih ponuda isti je kao u core/engine.py (reference_price, mark_deals).
 "use strict";
 
-const EXACT = 0.8, DEAL_THRESHOLD = 0.30;
-const $ = (sel) => document.querySelector(sel);
-const safeUrl = (u) => /^https?:\/\//i.test(u || "") ? u : "#";
-const eur = (n) => n == null ? "?" : n.toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+// ---------- konstante (iste vrijednosti kao u core/engine.py) ----------
+const EXACT_MIN = 0.8;        // od ove ocjene ponuda je "točan model"
+const DEAL_THRESHOLD = 0.30;  // 30 % ispod uobičajene cijene = apsurdno
+const RENDER_STEP = 100;      // koliko ponuda se iscrtava odjednom ("Prikaži još")
+
+// ---------- pomoćne funkcije ----------
+const $ = (selector) => document.querySelector(selector);
+const safeUrl = (url) => /^https?:\/\//i.test(url || "") ? url : "#";
+const eur = (amount) => amount == null ? "?"
+  : amount.toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+function escapeHtml(text) {
+  return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
 const api = {
-  get: (url) => fetch(url).then((r) => r.json()),
+  get: (url) => fetch(url).then((response) => response.json()),
   send: (url, method, body) => fetch(url, {
     method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body),
-  }).then((r) => r.json()),
+  }).then((response) => response.json()),
 };
 
 // ---------- tabovi ----------
-document.querySelectorAll("nav button").forEach((btn) => btn.addEventListener("click", () => {
+document.querySelectorAll("nav button").forEach((button) => button.addEventListener("click", () => {
   document.querySelectorAll("nav button, .tab").forEach((el) => el.classList.remove("active"));
-  btn.classList.add("active");
-  $(`#tab-${btn.dataset.tab}`).classList.add("active");
-  if (btn.dataset.tab === "watch") loadWatches();
-  if (btn.dataset.tab === "settings") { loadSettings(); loadHealth(); loadMobile(); }
+  button.classList.add("active");
+  $(`#tab-${button.dataset.tab}`).classList.add("active");
+  if (button.dataset.tab === "watch") loadWatches();
+  if (button.dataset.tab === "settings") { loadSettings(); loadSourceHealth(); loadMobileQr(); }
 }));
 
 // ---------- pretraga ----------
-const state = { query: "", offers: [], cond: "all", es: null, shown: 100 };
+const search = {
+  query: "",
+  offers: [],          // sve ponude koje su stigle (svi izvori)
+  condition: "all",    // filter "Sve / Novo / Rabljeno"
+  events: null,        // EventSource veza sa serverom
+  shown: RENDER_STEP,  // koliko ponuda je trenutno iscrtano
+};
 
-$("#search-form").addEventListener("submit", (e) => { e.preventDefault(); runSearch($("#q").value.trim()); });
-$("#f-view").addEventListener("change", () => { state.shown = RENDER_STEP; render(); });
-$("#f-sort").addEventListener("change", () => { state.shown = RENDER_STEP; render(); });
-$("#f-max").addEventListener("input", render);
-$("#f-cond").addEventListener("click", (e) => {
-  if (!e.target.dataset.v) return;
-  state.cond = e.target.dataset.v;
-  $("#f-cond").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === e.target));
-  render();
+$("#search-form").addEventListener("submit", (event) => { event.preventDefault(); runSearch($("#q").value.trim()); });
+$("#f-view").addEventListener("change", () => { search.shown = RENDER_STEP; renderResults(); });
+$("#f-sort").addEventListener("change", () => { search.shown = RENDER_STEP; renderResults(); });
+$("#f-max").addEventListener("input", renderResults);
+$("#f-cond").addEventListener("click", (event) => {
+  if (!event.target.dataset.v) return;
+  search.condition = event.target.dataset.v;
+  $("#f-cond").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === event.target));
+  renderResults();
 });
 
-function runSearch(q) {
-  if (q.length < 2) return;
-  state.es?.close();
-  Object.assign(state, { query: q, offers: [], shown: RENDER_STEP });
-  history.replaceState(null, "", "?q=" + encodeURIComponent(q));
+// Server šalje rezultate izvor po izvor (Server-Sent Events): "start" -> "source" (×N) -> "done"
+function runSearch(query) {
+  if (query.length < 2) return;
+  search.events?.close();
+  Object.assign(search, { query, offers: [], shown: RENDER_STEP });
+  history.replaceState(null, "", "?q=" + encodeURIComponent(query));
   $("#sources").innerHTML = "";
   $("#summary").textContent = "Tražim…";
+  delete $("#summary").dataset.time;
   $("#watch-btn").hidden = false;
-  render();
+  renderResults();
 
-  const t0 = performance.now();
-  const es = state.es = new EventSource("/api/search?q=" + encodeURIComponent(q));
-  es.addEventListener("start", (e) => {
-    for (const label of JSON.parse(e.data).sources) {
+  const started = performance.now();
+  const events = search.events = new EventSource("/api/search?q=" + encodeURIComponent(query));
+  events.addEventListener("start", (event) => {
+    for (const label of JSON.parse(event.data).sources) {
       $("#sources").insertAdjacentHTML("beforeend", `<span class="chip wait" data-label="${label}">${label}</span>`);
     }
     updateSourcesSummary();
   });
-  es.addEventListener("source", (e) => {
-    const d = JSON.parse(e.data);
-    const chip = $(`#sources [data-label="${CSS.escape(d.label)}"]`);
-    chip.className = "chip " + (d.ok ? "ok" : "err");
-    chip.textContent = d.ok ? `${d.label} ${d.offers.length}` : `${d.label} ✕`;
-    chip.title = d.ok ? `${d.ms} ms` : d.error;
+  events.addEventListener("source", (event) => {
+    const result = JSON.parse(event.data);
+    const chip = $(`#sources [data-label="${CSS.escape(result.label)}"]`);
+    chip.className = "chip " + (result.ok ? "ok" : "err");
+    chip.textContent = result.ok ? `${result.label} ${result.offers.length}` : `${result.label} ✕`;
+    chip.title = result.ok ? `${result.ms} ms` : result.error;
     updateSourcesSummary();
-    state.offers.push(...d.offers);
-    render();
+    search.offers.push(...result.offers);
+    renderResults();
   });
-  es.addEventListener("done", () => {
-    es.close();
-    $("#summary").dataset.time = ((performance.now() - t0) / 1000).toFixed(1);
-    render();
+  events.addEventListener("done", () => {
+    events.close();
+    $("#summary").dataset.time = ((performance.now() - started) / 1000).toFixed(1);
+    renderResults();
   });
-  es.onerror = () => { es.close(); $("#summary").textContent = "Veza sa serverom prekinuta."; };
+  events.onerror = () => { events.close(); $("#summary").textContent = "Veza sa serverom prekinuta."; };
 }
 
 function updateSourcesSummary() {
-  const count = (cls) => document.querySelectorAll(`#sources .chip.${cls}`).length;
-  const [ok, err, wait] = [count("ok"), count("err"), count("wait")];
-  $("#sources-sum").textContent = `Izvori: ✓ ${ok} radi` + (err ? ` · ✕ ${err} ne radi` : "") + (wait ? ` · ⏳ ${wait} traži…` : "");
+  const count = (state) => document.querySelectorAll(`#sources .chip.${state}`).length;
+  const [ok, failed, waiting] = [count("ok"), count("err"), count("wait")];
+  $("#sources-sum").textContent = `Izvori: ✓ ${ok} radi` + (failed ? ` · ✕ ${failed} ne radi` : "")
+    + (waiting ? ` · ⏳ ${waiting} traži…` : "");
 }
 
+// ---------- prikaz rezultata ----------
+// "Uobičajena cijena" = medijan ukupne cijene točnog modela (iz novih ponuda ako ih ima barem 2)
 function referencePrice(offers) {
-  const exact = offers.filter((o) => o.match >= EXACT);
-  const fresh = exact.filter((o) => o.condition === "new").map((o) => o.total);
-  const pool = fresh.length >= 2 ? fresh : exact.map((o) => o.total);
+  const exact = offers.filter((offer) => offer.match >= EXACT_MIN);
+  const newTotals = exact.filter((offer) => offer.condition === "new").map((offer) => offer.total);
+  const pool = newTotals.length >= 2 ? newTotals : exact.map((offer) => offer.total);
   if (pool.length < 2) return null;
-  const s = [...pool].sort((a, b) => a - b), m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  const sorted = [...pool].sort((a, b) => a - b), middle = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-// sortiranje: ključ -> usporedba (sve ponude u jednoj listi, korisnik bira poredak)
+// poredak (izbornik "Ukupno ↑" itd.): ključ -> usporedba
 const SORTS = {
   "total-asc": (a, b) => a.total - b.total,
   "total-desc": (a, b) => b.total - a.total,
@@ -98,93 +121,84 @@ const SORTS = {
   "source": (a, b) => a.source_name.localeCompare(b.source_name) || a.total - b.total,
   "match": (a, b) => b.match - a.match || a.total - b.total,
 };
-const RENDER_STEP = 100;  // koliko ponuda se iscrtava odjednom ("Prikaži još")
 
-function render() {
-  const ref = referencePrice(state.offers);
-  for (const o of state.offers) {
-    o.deal_pct = ref && o.match >= EXACT ? 1 - o.total / ref : 0;
-    o.is_deal = o.deal_pct >= DEAL_THRESHOLD;
+function renderResults() {
+  const reference = referencePrice(search.offers);
+  for (const offer of search.offers) {
+    offer.deal_pct = reference && offer.match >= EXACT_MIN ? 1 - offer.total / reference : 0;
+    offer.is_deal = offer.deal_pct >= DEAL_THRESHOLD;
   }
-  const max = parseFloat($("#f-max").value) || Infinity;
+  const maxTotal = parseFloat($("#f-max").value) || Infinity;
+  const filtered = search.offers
+    .filter((offer) => search.condition === "all" || offer.condition === search.condition)
+    .filter((offer) => offer.total <= maxTotal);
+  const exact = filtered.filter((offer) => offer.match >= EXACT_MIN);
   const onlyExact = $("#f-view").value === "exact";
-  const filtered = state.offers
-    .filter((o) => state.cond === "all" || o.condition === state.cond)
-    .filter((o) => o.total <= max);
-  const exact = filtered.filter((o) => o.match >= EXACT);
-  const visible = (onlyExact ? exact : filtered).sort(SORTS[$("#f-sort").value] || SORTS["total-asc"]);
-
-  const box = $("#results");
-  box.innerHTML = "";
+  const visible = [...(onlyExact ? exact : filtered)].sort(SORTS[$("#f-sort").value] || SORTS["total-asc"]);
   const cheapestExact = [...exact].sort(SORTS["total-asc"])[0];
-  box.append(...visible.slice(0, state.shown).map((o) => offerEl(o, o === cheapestExact)));
-  if (visible.length > state.shown) {
+
+  const list = $("#results");
+  list.innerHTML = "";
+  list.append(...visible.slice(0, search.shown).map((offer) => offerCard(offer, offer === cheapestExact)));
+  if (visible.length > search.shown) {
     const more = document.createElement("button");
     more.className = "ghost more";
-    more.textContent = `Prikaži još (${visible.length - state.shown})`;
-    more.onclick = () => { state.shown += RENDER_STEP; render(); };
-    box.append(more);
+    more.textContent = `Prikaži još (${visible.length - search.shown})`;
+    more.onclick = () => { search.shown += RENDER_STEP; renderResults(); };
+    list.append(more);
   }
+  renderSummary(filtered, exact, cheapestExact, reference);
+}
 
-  const time = $("#summary").dataset.time;
-  const sources = new Set(filtered.map((o) => o.source)).size;
+function renderSummary(filtered, exact, cheapestExact, reference) {
+  const seconds = $("#summary").dataset.time;
+  const sourceCount = new Set(filtered.map((offer) => offer.source)).size;
+  const deals = exact.filter((offer) => offer.is_deal).length;
   const parts = [];
-  if (filtered.length) parts.push(`<b>${filtered.length}</b> ponuda iz ${sources} izvora (${exact.length} točan model)`);
+  if (filtered.length) parts.push(`<b>${filtered.length}</b> ponuda iz ${sourceCount} izvora (${exact.length} točan model)`);
   if (cheapestExact) parts.push(`najjeftiniji točan: <b>${eur(cheapestExact.total)}</b> (${escapeHtml(cheapestExact.source_name)})`);
-  if (ref) parts.push(`uobičajena cijena ~${eur(ref)}`);
-  const deals = exact.filter((o) => o.is_deal).length;
+  if (reference) parts.push(`uobičajena cijena ~${eur(reference)}`);
   if (deals) parts.push(`🔥 ${deals} apsurdnih`);
-  if (time) parts.push(`${time} s`);
-  if (state.query) $("#summary").innerHTML = parts.join(" · ") || (time ? "Ništa nije pronađeno." : "Tražim…");
+  if (seconds) parts.push(`${seconds} s`);
+  if (search.query) $("#summary").innerHTML = parts.join(" · ") || (seconds ? "Ništa nije pronađeno." : "Tražim…");
 }
 
-function group(text) {
-  const el = document.createElement("div");
-  el.className = "group";
-  el.textContent = text;
-  return el;
-}
+function offerCard(offer, isCheapestExact) {
+  const card = $("#offer-tpl").content.firstElementChild.cloneNode(true);
+  card.href = safeUrl(offer.url);
+  card.classList.toggle("deal", offer.is_deal);
+  card.classList.toggle("best", isCheapestExact);
+  card.querySelector("img").src = offer.image || "";
+  card.querySelector(".title").textContent = offer.title;
 
-function offerEl(o, best = false) {
-  const el = $("#offer-tpl").content.firstElementChild.cloneNode(true);
-  el.href = safeUrl(o.url);
-  el.classList.toggle("deal", o.is_deal);
-  el.classList.toggle("best", best);
-  el.querySelector("img").src = o.image || "";
-  el.querySelector(".title").textContent = o.title;
-
-  const badges = [o.match >= EXACT
+  const badges = [offer.match >= EXACT_MIN
     ? `<span class="badge exact">✓ točan model</span>`
     : `<span class="badge variant">varijanta</span>`];
-  if (o.is_deal) badges.push(`<span class="badge deal">🔥 −${Math.round(o.deal_pct * 100)}%</span>`);
-  badges.push(`<span class="badge ${o.condition}">${o.condition === "new" ? "novo" : "rabljeno"}</span>`);
-  if (o.is_auction) badges.push(`<span class="badge">aukcija</span>`);
-  const meta = [o.source_name, o.location].filter(Boolean).map(escapeHtml).join(" · ");
-  el.querySelector(".meta").innerHTML = badges.join("") + meta;
-  el.querySelector(".note").textContent = [o.match_note, o.shipping_note].filter(Boolean).join(" · ");
+  if (offer.is_deal) badges.push(`<span class="badge deal">🔥 −${Math.round(offer.deal_pct * 100)}%</span>`);
+  badges.push(`<span class="badge ${offer.condition}">${offer.condition === "new" ? "novo" : "rabljeno"}</span>`);
+  if (offer.is_auction) badges.push(`<span class="badge">aukcija</span>`);
+  const where = [offer.source_name, offer.location].filter(Boolean).map(escapeHtml).join(" · ");
+  card.querySelector(".meta").innerHTML = badges.join("") + where;
+  card.querySelector(".note").textContent = [offer.match_note, offer.shipping_note].filter(Boolean).join(" · ");
 
-  el.querySelector(".total").textContent = eur(o.total);
-  const ship = o.shipping == null ? "dostava ?" : `${o.shipping_exact ? "" : "~"}${eur(o.shipping)} dostava`;
-  const fees = o.fees ? ` + ${eur(o.fees)} naknada` : "";
-  el.querySelector(".breakdown").innerHTML =
-    `${eur(o.price)}${fees} + <span class="${o.shipping_exact ? "" : "est"}" title="${escapeHtml(o.shipping_note)}">${ship}</span>`;
-  return el;
-}
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  card.querySelector(".total").textContent = eur(offer.total);
+  const shipping = offer.shipping == null ? "dostava ?" : `${offer.shipping_exact ? "" : "~"}${eur(offer.shipping)} dostava`;
+  const fees = offer.fees ? ` + ${eur(offer.fees)} naknada` : "";
+  card.querySelector(".breakdown").innerHTML = `${eur(offer.price)}${fees} + `
+    + `<span class="${offer.shipping_exact ? "" : "est"}" title="${escapeHtml(offer.shipping_note)}">${shipping}</span>`;
+  return card;
 }
 
 // ---------- praćenje ----------
-$("#watch-btn").addEventListener("click", () => {
-  $("#w-q").value = state.query;
-  const ref = referencePrice(state.offers);
-  if (ref) $("#w-max").value = Math.round(ref * (1 - DEAL_THRESHOLD));
+$("#watch-btn").addEventListener("click", () => {  // "Prati ovaj model": predloži prag 30 % ispod uobičajene cijene
+  $("#w-q").value = search.query;
+  const reference = referencePrice(search.offers);
+  if (reference) $("#w-max").value = Math.round(reference * (1 - DEAL_THRESHOLD));
   document.querySelector('nav button[data-tab="watch"]').click();
 });
 
-$("#watch-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
+$("#watch-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
   const query = $("#w-q").value.trim();
   if (query.length < 2) return;
   await api.send("/api/watches", "POST", {
@@ -196,41 +210,40 @@ $("#watch-form").addEventListener("submit", async (e) => {
 });
 
 async function loadWatches() {
-  const list = await api.get("/api/watches");
-  $("#watch-count").textContent = list.length ? `(${list.length})` : "";
-  $("#watches").innerHTML = list.length ? "" : `<p class="hint">Još ništa ne pratiš.</p>`;
-  for (const w of list) {
-    const el = document.createElement("div");
-    el.className = "watch";
-    const rule = w.max_total ? `javi ispod ${eur(w.max_total)}` : "javi apsurdne cijene";
-    const best = w.best_total ? ` · najniže viđeno <a href="${escapeHtml(safeUrl(w.best_url))}" target="_blank">${eur(w.best_total)}</a>` : "";
-    const last = w.last_market ? ` · provjereno ${new Date(w.last_market * 1000).toLocaleTimeString("hr-HR")}` : " · čeka prvu provjeru";
-    el.innerHTML = `<div><b>${escapeHtml(w.query)}</b><div class="hint">${rule}${w.include_used ? "" : " · samo novo"}${w.include_similar ? " · i varijante" : ""}${best}${last}</div></div>`;
-    const del = document.createElement("button");
-    del.className = "ghost";
-    del.textContent = "Ukloni";
-    del.onclick = async () => { await api.send(`/api/watches/${w.id}`, "DELETE"); loadWatches(); };
-    el.append(del);
-    $("#watches").append(el);
-  }
+  const watches = await api.get("/api/watches");
+  $("#watch-count").textContent = watches.length ? `(${watches.length})` : "";
+  $("#watches").innerHTML = watches.length ? "" : `<p class="hint">Još ništa ne pratiš.</p>`;
+  for (const watch of watches) $("#watches").append(watchRow(watch));
+}
+
+function watchRow(watch) {
+  const rule = watch.max_total ? `javi ispod ${eur(watch.max_total)}` : "javi apsurdne cijene";
+  const options = (watch.include_used ? "" : " · samo novo") + (watch.include_similar ? " · i varijante" : "");
+  const best = watch.best_total
+    ? ` · najniže viđeno <a href="${escapeHtml(safeUrl(watch.best_url))}" target="_blank">${eur(watch.best_total)}</a>` : "";
+  const lastCheck = watch.last_market
+    ? ` · provjereno ${new Date(watch.last_market * 1000).toLocaleTimeString("hr-HR")}` : " · čeka prvu provjeru";
+
+  const row = document.createElement("div");
+  row.className = "watch";
+  row.innerHTML = `<div><b>${escapeHtml(watch.query)}</b><div class="hint">${rule}${options}${best}${lastCheck}</div></div>`;
+  const remove = document.createElement("button");
+  remove.className = "ghost";
+  remove.textContent = "Ukloni";
+  remove.onclick = async () => { await api.send(`/api/watches/${watch.id}`, "DELETE"); loadWatches(); };
+  row.append(remove);
+  return row;
 }
 
 // ---------- postavke ----------
 async function loadSettings() {
-  const s = await api.get("/api/settings");
-  $("#tg-dot").classList.toggle("on", s.configured);
-  $("#tg-token").placeholder = s.tg_token_set ? `spremljen (${s.tg_token_hint})` : "token bota";
-  $("#tg-status").textContent = s.configured ? `Povezano (chat ${s.tg_chat}).` : "Nije povezano.";
-  $("#ebay-status").textContent = s.ebay_set ? `Ključ spremljen (${s.ebay_hint}) - eBay koristi službeni API.` : "Nije upisano - koristi se scraping.";
+  const settings = await api.get("/api/settings");
+  $("#tg-dot").classList.toggle("on", settings.configured);
+  $("#tg-token").placeholder = settings.tg_token_set ? `spremljen (${settings.tg_token_hint})` : "token bota";
+  $("#tg-status").textContent = settings.configured ? `Povezano (chat ${settings.tg_chat}).` : "Nije povezano.";
+  $("#ebay-status").textContent = settings.ebay_set
+    ? `Ključ spremljen (${settings.ebay_hint}) - eBay koristi službeni API.` : "Nije upisano - koristi se scraping.";
 }
-
-$("#ebay-save").addEventListener("click", async () => {
-  const id = $("#ebay-id").value.trim(), secret = $("#ebay-secret").value.trim();
-  if (!id || !secret) return;
-  await api.send("/api/settings", "POST", { ebay_client_id: id, ebay_client_secret: secret });
-  $("#ebay-id").value = $("#ebay-secret").value = "";
-  loadSettings();
-});
 
 $("#tg-save").addEventListener("click", async () => {
   const token = $("#tg-token").value.trim();
@@ -240,37 +253,47 @@ $("#tg-save").addEventListener("click", async () => {
   loadSettings();
 });
 $("#tg-detect").addEventListener("click", async () => {
-  const r = await api.send("/api/telegram/detect", "POST");
-  $("#tg-status").textContent = r.chat ? `Povezano s: ${r.info}` : r.info;
-  if (r.chat) loadSettings();
+  const result = await api.send("/api/telegram/detect", "POST");
+  $("#tg-status").textContent = result.chat ? `Povezano s: ${result.info}` : result.info;
+  if (result.chat) loadSettings();
 });
 $("#tg-test").addEventListener("click", async () => {
-  const r = await api.send("/api/telegram/test", "POST");
-  $("#tg-status").textContent = r.ok ? "Poruka poslana ✅" : `Nije uspjelo: ${r.error}`;
+  const result = await api.send("/api/telegram/test", "POST");
+  $("#tg-status").textContent = result.ok ? "Poruka poslana ✅" : `Nije uspjelo: ${result.error}`;
 });
 
-async function loadMobile() {
-  const r = await fetch("/api/mobile");
-  if (!r.ok) return;  // na mobitelu se QR ne prikazuje
-  const m = await r.json();
+$("#ebay-save").addEventListener("click", async () => {
+  const clientId = $("#ebay-id").value.trim(), clientSecret = $("#ebay-secret").value.trim();
+  if (!clientId || !clientSecret) return;
+  await api.send("/api/settings", "POST", { ebay_client_id: clientId, ebay_client_secret: clientSecret });
+  $("#ebay-id").value = $("#ebay-secret").value = "";
+  loadSettings();
+});
+
+async function loadMobileQr() {
+  const response = await fetch("/api/mobile");
+  if (!response.ok) return;  // na mobitelu se QR ne prikazuje (samo na računalu)
+  const mobile = await response.json();
   $("#mobile-box").hidden = false;
-  $("#mobile-qr").innerHTML = m.qr;  // SVG generira naš server (segno), nije vanjski sadržaj
-  $("#mobile-url").textContent = m.url;
+  $("#mobile-qr").innerHTML = mobile.qr;  // SVG generira naš server (core/access.py), nije vanjski sadržaj
+  $("#mobile-url").textContent = mobile.url;
 }
 
-async function loadHealth() {
-  const h = await api.get("/api/health");
-  $("#health").innerHTML = Object.values(h).map((s) => {
-    const status = s.ok === null ? "još nije korišten" : s.ok ? `✅ radi · ${s.ms} ms` : `❌ ${escapeHtml(s.error)}`;
-    return `<div class="health"><span>${s.label} <span class="hint">${s.kind === "market" ? "oglasnik" : "trgovina"}</span></span><span class="hint">${status}</span></div>`;
+async function loadSourceHealth() {
+  const sources = await api.get("/api/health");
+  $("#health").innerHTML = Object.values(sources).map((source) => {
+    const status = source.ok === null ? "još nije korišten"
+      : source.ok ? `✅ radi · ${source.found} ponuda · ${source.ms} ms` : `❌ ${escapeHtml(source.error)}`;
+    const kind = source.kind === "market" ? "oglasnik" : "trgovina";
+    return `<div class="health"><span>${source.label} <span class="hint">${kind}</span></span><span class="hint">${status}</span></div>`;
   }).join("");
 }
 
 // ---------- start ----------
 initCatalog({
-  onPick(racket) {  // klik na verziju iz kataloga = pretraga točno te verzije
-    const hasYear = racket.year && racket.title.includes(String(racket.year));
-    const query = hasYear || !racket.year ? racket.title : `${racket.title} ${racket.year}`;
+  onPick(racket) {  // klik na verziju iz kataloga = pretraga točno te verzije (+ godina ako je nema u nazivu)
+    const titleHasYear = racket.year && racket.title.includes(String(racket.year));
+    const query = titleHasYear || !racket.year ? racket.title : `${racket.title} ${racket.year}`;
     $("#q").value = query;
     $("#finder").open = false;
     runSearch(query);
@@ -278,5 +301,5 @@ initCatalog({
 });
 loadSettings();
 loadWatches();
-const initial = new URLSearchParams(location.search).get("q");
-if (initial) { $("#q").value = initial; runSearch(initial); }
+const queryFromUrl = new URLSearchParams(location.search).get("q");
+if (queryFromUrl) { $("#q").value = queryFromUrl; runSearch(queryFromUrl); }

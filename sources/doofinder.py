@@ -22,28 +22,28 @@ IN_STOCK = {"in stock", "instock", "available"}
 def _source(name: str) -> Source:
     label, hashid, origin = SHOPS[name]
 
-    def to_offer(p: dict) -> Offer | None:
-        if str(p.get("availability", "in stock")).lower() not in IN_STOCK:
+    def to_offer(product: dict) -> Offer | None:
+        if str(product.get("availability", "in stock")).lower() not in IN_STOCK:
             return None
-        price = float(p.get("sale_price") or p.get("best_price") or p.get("price") or 0)
+        price = float(product.get("sale_price") or product.get("best_price") or product.get("price") or 0)
         if not price:
             return None
         ship, note, exact = shop_shipping(name, price)
-        categories = p.get("categories") or []
+        categories = product.get("categories") or []
         return Offer(
-            source=name, source_name=label, id=str(p.get("id") or p.get("link")), title=p.get("title", ""),
-            url=p.get("link", ""), price=price, condition="new", image=p.get("image_link", ""),
+            source=name, source_name=label, id=str(product.get("id") or product.get("link")), title=product.get("title", ""),
+            url=product.get("link", ""), price=price, condition="new", image=product.get("image_link", ""),
             shipping=ship, shipping_note=note, shipping_exact=exact,
-            extra={"category": " ".join(categories) if isinstance(categories, list) else str(categories)},
+            category=" ".join(categories) if isinstance(categories, list) else str(categories),
         )
 
     async def search(query: str) -> list[Offer]:
-        async with session() as s:
+        async with session() as client:
             async def page(n: int) -> list[dict]:
-                r = await s.get(SEARCH_URL, params={"hashid": hashid, "query": query, "rpp": PAGE_SIZE, "page": n},
+                response = await client.get(SEARCH_URL, params={"hashid": hashid, "query": query, "rpp": PAGE_SIZE, "page": n},
                                 headers={"origin": origin, "referer": origin + "/"})
-                r.raise_for_status()
-                return r.json().get("results", [])
+                response.raise_for_status()
+                return response.json().get("results", [])
 
             return [o for o in map(to_offer, await fetch_pages(page, full_page=PAGE_SIZE)) if o]
 

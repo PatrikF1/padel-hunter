@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .http import next_payload, session, text
-from .matcher import ACCESSORY, BRANDS, NEW_HINTS, PACK, STOPWORDS, tokens, years
+from .matcher import ACCESSORY, BRANDS, NEW_HINTS, PACK, STOPWORDS, WantedRacket, tokens, years
 
 CATALOG_FILE = Path(__file__).resolve().parent.parent / "catalog.json"
 MAX_AGE = 3 * 24 * 3600
@@ -97,32 +97,32 @@ async def _padelnuestro() -> list[Racket]:
               "filter[categories][]": "Padel Rackets"}
     headers = {"origin": "https://www.padelnuestro.com"}
     items: list[dict] = []
-    async with session() as s:
+    async with session() as client:
         for page in range(1, 30):
-            r = await s.get(url, params={**params, "page": page}, headers=headers)
-            r.raise_for_status()
-            batch = r.json().get("results", [])
+            response = await client.get(url, params={**params, "page": page}, headers=headers)
+            response.raise_for_status()
+            batch = response.json().get("results", [])
             if not batch:
                 break
             items += batch
 
     def spec(p: dict, key: str) -> str:
-        v = p.get(key)
+        v = product.get(key)
         return "" if v in (None, "None") else str(v)
 
     rackets = []
-    for p in items:
-        if "Pack" in p.get("family", "") or spec(p, "forma") == "Beach Tennis":
+    for product in items:
+        if "Pack" in product.get("family", "") or spec(product, "forma") == "Beach Tennis":
             continue
-        brand, title = spec(p, "brand"), spec(p, "title")
-        collection = " ".join(p.get("categories") or [])
+        brand, title = spec(product, "brand"), spec(product, "title")
+        collection = " ".join(product.get("categories") or [])
         year = max(years(tokens(title)) or years(re.findall(r"20\d\d", collection)) or {None}, key=lambda y: y or 0)
         rackets.append(Racket(
-            id="pn:" + str(p.get("id")), brand=brand, title=title, family=family_of(brand, title), year=year,
-            shape=spec(p, "forma"), balance=spec(p, "balance"), core=spec(p, "nucleo"), face=spec(p, "cara"),
-            level=spec(p, "nivel de juego"), play=spec(p, "tipo de juego"), gender=spec(p, "jugador"),
-            image=spec(p, "image_link"), price=p.get("sale_price"), list_price=p.get("price"),
-            url=spec(p, "link"), sources=["Padel Nuestro"],
+            id="pn:" + str(product.get("id")), brand=brand, title=title, family=family_of(brand, title), year=year,
+            shape=spec(product, "forma"), balance=spec(product, "balance"), core=spec(product, "nucleo"), face=spec(product, "cara"),
+            level=spec(product, "nivel de juego"), play=spec(product, "tipo de juego"), gender=spec(product, "jugador"),
+            image=spec(product, "image_link"), price=product.get("sale_price"), list_price=product.get("price"),
+            url=spec(product, "link"), sources=["Padel Nuestro"],
         ))
     return rackets
 
@@ -132,11 +132,11 @@ async def _padelful() -> list[Racket]:
     base = "https://www.padelful.com"
     sem = asyncio.Semaphore(4)  # pristojno prema njihovom serveru
 
-    async def page(s, n: int) -> tuple[list[dict], int]:
+    async def page(client, n: int) -> tuple[list[dict], int]:
         """Vraća rekete sa stranice i ukupan broj reketa u bazi."""
         async with sem:
-            r = await s.get(f"{base}/en/rackets", params={"page": n})
-        payload = next_payload(text(r))
+            response = await client.get(f"{base}/en/rackets", params={"page": n})
+        payload = next_payload(text(response))
         out, pos, marker = [], 0, '{"_id":"en/rackets/'
         while (i := payload.find(marker, pos)) >= 0:
             try:
@@ -148,10 +148,10 @@ async def _padelful() -> list[Racket]:
         total = re.search(r'"total":(\d+),"page":\d+', payload)
         return out, int(total.group(1)) if total else 0
 
-    async with session() as s:
-        first, total = await page(s, 1)
+    async with session() as client:
+        first, total = await page(client, 1)
         pages = -(-total // max(len(first), 1))  # zaokruži prema gore
-        rest = await asyncio.gather(*(page(s, n) for n in range(2, pages + 1)))
+        rest = await asyncio.gather(*(page(client, n) for n in range(2, pages + 1)))
     items = {o["slug"]: o for batch in [first, *(objs for objs, _ in rest)] for o in batch if o.get("slug")}
 
     rackets = []
@@ -247,13 +247,14 @@ async def refresh_if_stale() -> None:
             log.exception("osvježavanje kataloga nije uspjelo")
 
 
-def version_words(pq: dict) -> set[str]:
+def version_words(wanted: WantedRacket) -> set[str]:
     """Sve poznate oznake verzija za model iz upita (npr. 'adidas metalbone 3.4' -> {carbon, ctrl, hrd, ...})."""
-    core = pq["core"]
-    for n in range(min(3, len(core)), 0, -1):  # "at" + "10" -> "at10"
-        brands = catalog.families.get("".join(core[:n]))
+    words = wanted.model_words
+    for n in range(min(3, len(words)), 0, -1):  # "at" + "10" -> "at10"
+        family = "".join(words[:n])
+        brands = catalog.families.get(family)
         if brands:
-            if pq["brand"]:  # "black" iz upita odgovara brendu "blackcrown"
-                brands = {b for b in brands if pq["brand"] in b} or brands
-            return set().union(*(catalog.vocab.get((b, "".join(core[:n])), set()) for b in brands))
+            if wanted.brand:  # "black" iz upita odgovara brendu "blackcrown"
+                brands = {b for b in brands if wanted.brand in b} or brands
+            return set().union(*(catalog.vocab.get((b, family), set()) for b in brands))
     return set()

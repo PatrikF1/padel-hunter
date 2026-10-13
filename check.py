@@ -1,4 +1,4 @@
-"""Brza provjera iz terminala: radi li svaki izvor i što pronalazi.
+r"""Brza provjera iz terminala: radi li svaki izvor i što pronalazi.
 
     .venv\Scripts\python check.py "nox at10 genius 18k 2024"
 """

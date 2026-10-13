@@ -32,7 +32,6 @@ def test_njuskalo_parse():
     </article></li></ul>"""
     [o] = njuskalo.parse(html)
     assert (o.id, o.price, o.location, o.url) == ("123", 155.0, "Zagreb", "https://www.njuskalo.hr/tenis-reketi/nox-at10-oglas-123")
-    assert o.extra["trgovac"] is False
 
 
 def test_index_parse_builds_listing_url():

@@ -85,14 +85,14 @@ def _source(name: str) -> Source:
     lock = asyncio.Lock()
 
     async def fetch_all() -> list[Offer]:
-        async with session() as s:
-            first = text(await s.get(shop.url))
+        async with session() as client:
+            first = text(await client.get(shop.url))
             pages = [first]
             if shop.page_param:
                 sep = "&" if "?" in shop.url else "?"
-                rest = await asyncio.gather(*(s.get(f"{shop.url}{sep}{shop.page_param}={n}")
+                rest = await asyncio.gather(*(client.get(f"{shop.url}{sep}{shop.page_param}={n}")
                                               for n in range(2, _last_page(first, shop.page_param) + 1)))
-                pages += [text(r) for r in rest]
+                pages += [text(page) for page in rest]
         offers = list({o.url: o for html in pages for o in parse(name, shop, html)}.values())
         if not offers:
             raise RuntimeError("kategorija je prazna - stranica je možda promijenila izgled")

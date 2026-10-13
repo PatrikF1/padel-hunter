@@ -1,17 +1,18 @@
-// Odabir točne verzije reketa iz kataloga: kaskadni filteri (brend, model, godina, specifikacije).
-// Novi filter = jedan red u FILTERS (key mora postojati u Racket iz core/catalog.py).
+// Odabir točne verzije reketa iz kataloga: kaskadni filteri (brend, model, godina, specifikacije, ocjene).
+// Novi filter = jedan red u SPEC_FILTERS (key mora postojati u Racket iz core/catalog.py) ili RATING_FILTERS.
+// Koristi pomoćne funkcije iz app.js (api, eur, escapeHtml, safeUrl) - učitava se prije njega, poziva se iz njega.
 "use strict";
 
-const T = {  // prijevodi vrijednosti iz kataloga
+const TRANSLATIONS = {  // vrijednosti iz kataloga (engleski) -> hrvatski
   Round: "Okrugli", Diamond: "Dijamant", Teardrop: "Suza", Hybrid: "Hibridni",
   Low: "Nizak", Medium: "Srednji", High: "Visok",
   Beginners: "Početnik", Advanced: "Napredni", Professional: "Profesionalac",
   Control: "Kontrola", Power: "Snaga", Balance: "Balans",
   Man: "Muški", Woman: "Ženski", Kids: "Dječji",
 };
-const tr = (v) => T[v] || v;
+const translate = (value) => TRANSLATIONS[value] || value;
 
-const FILTERS = [
+const SPEC_FILTERS = [
   { key: "brand", label: "Brend" },
   { key: "family", label: "Model" },
   { key: "year", label: "Godina", sort: (a, b) => b - a },
@@ -23,8 +24,7 @@ const FILTERS = [
   { key: "core", label: "Jezgra" },
   { key: "gender", label: "Spol" },
 ];
-// ocjene iz Padelfula (0-10); filter "barem X"
-const RATINGS = [
+const RATING_FILTERS = [  // ocjene iz Padelfula (0-10), filter "barem X"
   { key: "power", label: "Snaga" },
   { key: "control", label: "Kontrola" },
   { key: "sweetSpot", label: "Sweet spot" },
@@ -32,108 +32,118 @@ const RATINGS = [
   { key: "rebound", label: "Odskok" },
 ];
 const RATING_STEPS = [7, 8, 8.5, 9, 9.5];
+const SPECS_ON_CARD = ["shape", "balance", "level", "play", "face", "core", "gender"];
 const MAX_CARDS = 60;
 
 // "High, Medium" -> ["High", "Medium"]; godina je broj
-const valuesOf = (r, key) => r[key] == null || r[key] === "" ? [] : String(r[key]).split(/,\s*/);
+const valuesOf = (racket, key) => racket[key] == null || racket[key] === "" ? [] : String(racket[key]).split(/,\s*/);
 
 function initCatalog({ onPick }) {
-  const box = document.querySelector("#finder");
-  const grid = box.querySelector(".filters-grid");
-  const list = box.querySelector("#versions");
-  const text = box.querySelector("#v-text");
-  const selected = {};   // key -> vrijednost
-  const minRating = {};  // npr. power -> 9
+  const finder = document.querySelector("#finder");
+  const grid = finder.querySelector(".filters-grid");
+  const versionList = finder.querySelector("#versions");
+  const nameFilter = finder.querySelector("#v-text");
+  const selectedSpec = {};  // npr. { brand: "Adidas", family: "METALBONE" }
+  const minRating = {};     // npr. { power: 9 }
   let rackets = [];
 
-  for (const f of FILTERS) {
-    const sel = document.createElement("select");
-    sel.dataset.key = f.key;
-    sel.addEventListener("change", () => {
-      selected[f.key] = sel.value;
-      if (f.key === "brand") selected.family = "";  // promjena brenda poništava model
-      update();
+  for (const filter of SPEC_FILTERS) {
+    const select = labeledSelect(filter.label);
+    select.dataset.key = filter.key;
+    select.addEventListener("change", () => {
+      selectedSpec[filter.key] = select.value;
+      if (filter.key === "brand") selectedSpec.family = "";  // promjena brenda poništava model
+      refresh();
     });
-    const wrap = document.createElement("label");
-    wrap.append(f.label, sel);
-    grid.append(wrap);
   }
-  for (const rt of RATINGS) {
-    const sel = document.createElement("select");
-    sel.dataset.rating = rt.key;
-    sel.innerHTML = `<option value="">sve</option>` + RATING_STEPS.map((v) => `<option value="${v}">≥ ${v}</option>`).join("");
-    sel.addEventListener("change", () => { minRating[rt.key] = parseFloat(sel.value) || 0; update(); });
-    const wrap = document.createElement("label");
-    wrap.append(rt.label, sel);
-    grid.append(wrap);
+  for (const filter of RATING_FILTERS) {
+    const select = labeledSelect(filter.label);
+    select.dataset.rating = filter.key;
+    select.innerHTML = `<option value="">sve</option>` + RATING_STEPS.map((step) => `<option value="${step}">≥ ${step}</option>`).join("");
+    select.addEventListener("change", () => { minRating[filter.key] = parseFloat(select.value) || 0; refresh(); });
   }
-  text.addEventListener("input", update);
-  box.querySelector("#v-reset").addEventListener("click", () => {
-    for (const k in selected) selected[k] = "";
-    for (const k in minRating) minRating[k] = 0;
-    grid.querySelectorAll("[data-rating]").forEach((sel) => { sel.value = ""; });
-    text.value = "";
-    update();
+  nameFilter.addEventListener("input", refresh);
+  finder.querySelector("#v-reset").addEventListener("click", () => {
+    for (const key in selectedSpec) selectedSpec[key] = "";
+    for (const key in minRating) minRating[key] = 0;
+    grid.querySelectorAll("[data-rating]").forEach((select) => { select.value = ""; });
+    nameFilter.value = "";
+    refresh();
   });
 
-  function matches(r, except) {
-    const words = text.value.toLowerCase().split(/\s+/).filter(Boolean);
-    if (words.some((w) => !r.title.toLowerCase().includes(w))) return false;
-    if (Object.entries(minRating).some(([k, min]) => min && !((r.ratings || {})[k] >= min))) return false;
-    return FILTERS.every((f) => f.key === except || !selected[f.key] || valuesOf(r, f.key).includes(selected[f.key]));
+  function labeledSelect(label) {
+    const select = document.createElement("select");
+    const wrapper = document.createElement("label");
+    wrapper.append(label, select);
+    grid.append(wrapper);
+    return select;
   }
 
-  function update() {
-    // svaki filter nudi samo vrijednosti koje postoje uz ostale odabrane filtere (kaskadno)
-    for (const f of FILTERS) {
+  // ignoreKey: kod brojanja opcija jednog filtera, taj filter se ne primjenjuje (inače bi nudio samo sebe)
+  function passesFilters(racket, ignoreKey = null) {
+    const words = nameFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.some((word) => !racket.title.toLowerCase().includes(word))) return false;
+    if (Object.entries(minRating).some(([key, min]) => min && !((racket.ratings || {})[key] >= min))) return false;
+    return SPEC_FILTERS.every((filter) => filter.key === ignoreKey || !selectedSpec[filter.key]
+      || valuesOf(racket, filter.key).includes(selectedSpec[filter.key]));
+  }
+
+  // svaki filter nudi samo vrijednosti koje postoje uz ostale odabrane filtere (kaskadno)
+  function refresh() {
+    for (const filter of SPEC_FILTERS) {
       const counts = {};
-      for (const r of rackets) if (matches(r, f.key)) for (const v of valuesOf(r, f.key)) counts[v] = (counts[v] || 0) + 1;
-      const values = Object.keys(counts).sort(f.sort || ((a, b) => a.localeCompare(b)));
-      const sel = grid.querySelector(`[data-key="${f.key}"]`);
-      sel.innerHTML = `<option value="">sve</option>` +
-        values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(tr(v))} (${counts[v]})</option>`).join("");
-      sel.value = selected[f.key] && counts[selected[f.key]] ? selected[f.key] : "";
-      selected[f.key] = sel.value;
+      for (const racket of rackets) {
+        if (!passesFilters(racket, filter.key)) continue;
+        for (const value of valuesOf(racket, filter.key)) counts[value] = (counts[value] || 0) + 1;
+      }
+      const values = Object.keys(counts).sort(filter.sort || ((a, b) => a.localeCompare(b)));
+      const select = grid.querySelector(`[data-key="${filter.key}"]`);
+      select.innerHTML = `<option value="">sve</option>`
+        + values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(translate(value))} (${counts[value]})</option>`).join("");
+      select.value = selectedSpec[filter.key] && counts[selectedSpec[filter.key]] ? selectedSpec[filter.key] : "";
+      selectedSpec[filter.key] = select.value;
     }
-    renderVersions(rackets.filter((r) => matches(r)));
+    renderVersions(rackets.filter((racket) => passesFilters(racket)));
   }
 
   function renderVersions(found) {
-    const sorted = found.sort((a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title));
-    list.innerHTML = "";
-    box.querySelector("#v-count").textContent = `${found.length} verzija`;
-    for (const r of sorted.slice(0, MAX_CARDS)) list.append(versionCard(r));
+    found.sort((a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title));
+    versionList.innerHTML = "";
+    finder.querySelector("#v-count").textContent = `${found.length} verzija`;
+    for (const racket of found.slice(0, MAX_CARDS)) versionList.append(versionCard(racket));
     if (found.length > MAX_CARDS) {
-      list.insertAdjacentHTML("beforeend", `<p class="hint">+${found.length - MAX_CARDS} još, suzi filtere.</p>`);
+      versionList.insertAdjacentHTML("beforeend", `<p class="hint">+${found.length - MAX_CARDS} još, suzi filtere.</p>`);
     }
   }
 
-  function versionCard(r) {
-    const el = document.createElement("button");
-    el.type = "button";
-    el.className = "version";
-    const specs = [r.year, ...["shape", "balance", "level", "play", "face", "core", "gender"].map((k) => r[k] && tr(r[k]))]
-      .filter(Boolean).map((s) => `<span class="spec">${escapeHtml(String(s).split(/,\s*/).map(tr).join(", "))}</span>`).join("");
-    const ratings = RATINGS.filter((rt) => (r.ratings || {})[rt.key] != null)
-      .map((rt) => `${rt.label} ${r.ratings[rt.key]}`).join(" · ");
-    const price = r.price ? `od ${eur(r.price)}` + (r.list_price > r.price ? ` <s>${eur(r.list_price)}</s>` : "") : "";
-    el.innerHTML = `<img loading="lazy" src="${escapeHtml(safeUrl(r.image))}" alt="">
-      <div><div class="title">${escapeHtml(r.title)}</div><div class="specs">${specs}</div>
+  function versionCard(racket) {
+    const specs = [racket.year, ...SPECS_ON_CARD.map((key) => valuesOf(racket, key).map(translate).join(", "))]
+      .filter(Boolean).map((spec) => `<span class="spec">${escapeHtml(spec)}</span>`).join("");
+    const ratings = RATING_FILTERS.filter((filter) => (racket.ratings || {})[filter.key] != null)
+      .map((filter) => `${filter.label} ${racket.ratings[filter.key]}`).join(" · ");
+    const price = racket.price
+      ? `od ${eur(racket.price)}` + (racket.list_price > racket.price ? ` <s>${eur(racket.list_price)}</s>` : "") : "";
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "version";
+    card.innerHTML = `<img loading="lazy" src="${escapeHtml(safeUrl(racket.image))}" alt="">
+      <div><div class="title">${escapeHtml(racket.title)}</div><div class="specs">${specs}</div>
       <div class="hint">${escapeHtml(ratings)}</div><div class="hint">${price}</div></div>`;
-    el.addEventListener("click", () => onPick(r));
-    return el;
+    card.addEventListener("click", () => onPick(racket));
+    return card;
   }
 
-  async function load() {
+  async function loadCatalog() {
     const data = await api.get("/api/catalog");
     rackets = data.rackets;
-    box.querySelector("summary .hint").textContent = rackets.length
+    finder.querySelector("summary .hint").textContent = rackets.length
       ? `${rackets.length} reketa · osvježeno ${new Date(data.updated * 1000).toLocaleDateString("hr-HR")}`
       : "katalog se učitava…";
-    document.querySelector("#titles").innerHTML = rackets.map((r) => `<option value="${escapeHtml(r.title)}">`).join("");
-    if (!rackets.length) setTimeout(load, 5000);  // prvo pokretanje: katalog se još skida
-    update();
+    document.querySelector("#titles").innerHTML = rackets.map((racket) => `<option value="${escapeHtml(racket.title)}">`).join("");
+    if (!rackets.length) setTimeout(loadCatalog, 5000);  // prvo pokretanje: katalog se još skida
+    refresh();
   }
 
-  load();
+  loadCatalog();
 }

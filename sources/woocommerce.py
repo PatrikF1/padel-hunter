@@ -23,31 +23,31 @@ SHOPS = {  # name: (label, base_url)
 def _source(name: str) -> Source:
     label, base = SHOPS[name]
 
-    async def to_offer(p: dict) -> Offer | None:
-        prices = p.get("prices") or {}
-        if not p.get("is_in_stock", True) or not prices.get("price"):
+    async def to_offer(product: dict) -> Offer | None:
+        prices = product.get("prices") or {}
+        if not product.get("is_in_stock", True) or not prices.get("price"):
             return None
         price = await to_eur(int(prices["price"]) / 10 ** int(prices.get("currency_minor_unit", 2)),
                              prices.get("currency_code", "EUR"))
         ship, note, exact = shop_shipping(name, price)
-        images = p.get("images") or [{}]
+        images = product.get("images") or [{}]
         return Offer(
-            source=name, source_name=label, id=str(p.get("id")), title=html.unescape(p.get("name", "")),
-            url=p.get("permalink", ""), price=price, condition="new", image=images[0].get("src", ""),
+            source=name, source_name=label, id=str(product.get("id")), title=html.unescape(product.get("name", "")),
+            url=product.get("permalink", ""), price=price, condition="new", image=images[0].get("src", ""),
             shipping=ship, shipping_note=note, shipping_exact=exact,
-            extra={"category": " ".join(c.get("name", "") for c in p.get("categories") or [])},
+            category=" ".join(c.get("name", "") for c in product.get("categories") or []),
         )
 
     async def search(query: str) -> list[Offer]:
-        async with session() as s:
+        async with session() as client:
             async def page(n: int) -> list[dict]:
-                r = await s.get(base + "/wp-json/wc/store/v1/products",
+                response = await client.get(base + "/wp-json/wc/store/v1/products",
                                 params={"search": query, "per_page": PAGE_SIZE, "page": n})
-                r.raise_for_status()
-                return r.json()
+                response.raise_for_status()
+                return response.json()
 
             products = await fetch_pages(page, full_page=PAGE_SIZE)
-        return [o for o in [await to_offer(p) for p in products] if o]
+        return [o for o in [await to_offer(product) for product in products] if o]
 
     return Source(name, label, "shop", search)
 

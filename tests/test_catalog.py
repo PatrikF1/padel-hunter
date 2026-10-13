@@ -35,11 +35,11 @@ def test_version_words_multi_token_family():
 
 
 def test_exact_version_with_catalog():
-    pq = parse_query("adidas metalbone ctrl 3.4 2025")
-    pq["version_words"] = catalog.version_words(pq)
-    assert match(pq, "Metalbone CTRL 3.4 2025 Ale Galán")[0] == 1.0
-    assert match(pq, "ADIDAS METALBONE ZZ CTRL 3.4 2025")[0] == 0.5   # zz poznat samo iz kataloga
-    assert match(pq, "Adidas Metalbone Carbon CTRL 3.4 2025")[0] == 0.5
+    wanted = parse_query("adidas metalbone ctrl 3.4 2025")
+    wanted.version_words = catalog.version_words(wanted)
+    assert match(wanted, "Metalbone CTRL 3.4 2025 Ale Galán").score == 1.0
+    assert match(wanted, "ADIDAS METALBONE ZZ CTRL 3.4 2025").score == 0.5   # zz poznat samo iz kataloga
+    assert match(wanted, "Adidas Metalbone Carbon CTRL 3.4 2025").score == 0.5
 
 
 def test_merge_same_racket_from_two_sources():

@@ -1,5 +1,15 @@
-"""Padel Hunter - pokretanje: start.bat  (ili: .venv\\Scripts\\python app.py)  ->  http://127.0.0.1:8777
+"""Padel Hunter - web server (FastAPI). Pokretanje: start.bat  ->  http://127.0.0.1:8777
 
+Ova datoteka samo povezuje dijelove; logika je u core/ (pretraga, praćenje...) i sources/ (izvori).
+Rute:
+  /                      sučelje (static/)
+  /api/search            pretraga - rezultati stižu izvor po izvor (Server-Sent Events)
+  /api/catalog           katalog reketa za filtere
+  /api/watches           praćeni modeli
+  /api/settings          Telegram, eBay ključ
+  /api/mobile            QR kod za mobitel
+  /api/health            stanje svakog izvora
+  /api/debug/...         traženje grešaka (vidi README -> "Kad nešto ne radi")
 Mobitel na istoj Wi-Fi mreži: Postavke -> QR kod (adresa s tajnim ključem)."""
 import asyncio
 import json
@@ -16,8 +26,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core import access, catalog, db, engine, telegram, watcher
-from core.matcher import parse_query
-from sources import SOURCES
+from core.matcher import match
+from sources import BY_NAME, SOURCES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 STATIC = Path(__file__).parent / "static"
@@ -29,8 +39,8 @@ async def lifespan(_app):
     catalog.load()
     tasks = [asyncio.create_task(watcher.loop()), asyncio.create_task(catalog.refresh_if_stale())]
     yield
-    for t in tasks:
-        t.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(title="Padel Hunter", lifespan=lifespan)
@@ -60,30 +70,24 @@ def index():
 
 @app.get("/api/search")
 async def search(q: str, fresh: int = 0):
-    q = q.strip()
-    if len(q) < 2:
+    """Server-Sent Events: 'start' (popis izvora), 'source' (rezultati jednog izvora), 'done'."""
+    query = q.strip()
+    if len(query) < 2:
         raise HTTPException(400, "upiši model")
 
     async def events():
-        t0 = time.time()
+        started = time.time()
         yield f"event: start\ndata: {json.dumps({'sources': [s.label for s in SOURCES]})}\n\n"
-        async for src, offers, err in engine.stream(q, use_cache=not fresh):
-            h = engine.health[src.name]
-            payload = {"source": src.name, "label": src.label, "ok": err is None,
-                       "error": h["error"] if err else "", "ms": h["ms"],
+        async for source, offers, error in engine.stream(query, use_cache=not fresh):
+            status = engine.health[source.name]
+            payload = {"source": source.name, "label": source.label, "ok": error is None,
+                       "error": status.error if error else "", "ms": status.ms,
                        "offers": [o.to_dict() for o in offers]}
             yield f"event: source\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-        yield f"event: done\ndata: {json.dumps({'ms': int((time.time() - t0) * 1000)})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'ms': int((time.time() - started) * 1000)})}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
-@app.get("/api/parse")
-def parse(q: str):
-    pq = parse_query(q)
-    pq["years"] = sorted(pq["years"])
-    return pq
 
 
 # ---- katalog (filteri i odabir točne verzije) ----
@@ -109,7 +113,29 @@ def mobile(request: Request):
 
 @app.get("/api/health")
 def health():
-    return engine.health
+    return engine.health_report()
+
+
+# ---- traženje grešaka ----
+@app.get("/api/debug/parse")
+def debug_parse(q: str):
+    """Kako je upit shvaćen: brend, riječi modela, brojevi, godina, oznake verzija iz kataloga."""
+    wanted = engine.wanted_racket(q)
+    return asdict(wanted) | {"years": sorted(wanted.years), "version_words": sorted(wanted.version_words)}
+
+
+@app.get("/api/debug/match")
+def debug_match(q: str, title: str, details: str = ""):
+    """Zašto (ne) prolazi jedan naslov oglasa, npr. ?q=adidas metalbone 3.3&title=Adidas Metalbone CTRL 3.3"""
+    return asdict(match(engine.wanted_racket(q), title, details=details))
+
+
+@app.get("/api/debug/explain")
+async def debug_explain(q: str, source: str):
+    """SVE ponude jednog izvora s ocjenom i razlogom, npr. ?q=adidas metalbone&source=vinted"""
+    if source not in BY_NAME:
+        raise HTTPException(404, "nepoznat izvor; postoje: " + ", ".join(BY_NAME))
+    return await engine.explain(q, source)
 
 
 # ---- praćenje ----
@@ -121,21 +147,20 @@ class WatchIn(BaseModel):
 
 
 @app.get("/api/watches")
-def watches():
-    return db.q("SELECT * FROM watches ORDER BY id DESC")
+def list_watches():
+    return [asdict(w) for w in db.list_watches()]
 
 
 @app.post("/api/watches")
-def add_watch(w: WatchIn):
-    if len(w.query.strip()) < 2:
+def add_watch(watch: WatchIn):
+    if len(watch.query.strip()) < 2:
         raise HTTPException(400, "upiši model")
-    return {"id": db.add_watch(w.query, w.max_total, w.include_used, w.include_similar)}
+    return {"id": db.add_watch(watch.query, watch.max_total, watch.include_used, watch.include_similar)}
 
 
-@app.delete("/api/watches/{wid}")
-def del_watch(wid: int):
-    db.x("DELETE FROM watches WHERE id=?", (wid,))
-    db.x("DELETE FROM seen WHERE watch_id=?", (wid,))
+@app.delete("/api/watches/{watch_id}")
+def delete_watch(watch_id: int):
+    db.delete_watch(watch_id)
     return {"ok": True}
 
 
@@ -154,16 +179,16 @@ def _hint(secret: str) -> str:
 
 @app.get("/api/settings")
 def get_settings():
-    tok = db.get_setting("tg_token")
-    return {"tg_token_set": bool(tok), "tg_token_hint": _hint(tok), "tg_chat": db.get_setting("tg_chat"),
+    token = db.get_setting("tg_token")
+    return {"tg_token_set": bool(token), "tg_token_hint": _hint(token), "tg_chat": db.get_setting("tg_chat"),
             "configured": telegram.configured(),
             "ebay_set": bool(db.get_setting("ebay_client_id") and db.get_setting("ebay_client_secret")),
             "ebay_hint": _hint(db.get_setting("ebay_client_id"))}
 
 
 @app.post("/api/settings")
-def save_settings(s: SettingsIn):
-    for key, value in s.model_dump(exclude_none=True).items():
+def save_settings(settings: SettingsIn):
+    for key, value in settings.model_dump(exclude_none=True).items():
         db.set_setting(key, value.strip())
     return get_settings()
 

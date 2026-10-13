@@ -26,26 +26,26 @@ AJAX_HEADERS = {"accept": "application/json", "x-requested-with": "XMLHttpReques
 def _source(name: str) -> Source:
     label, url_template = SHOPS[name]
 
-    def to_offer(p: dict) -> Offer | None:
-        price = float(p.get("price_amount") or 0)
+    def to_offer(product: dict) -> Offer | None:
+        price = float(product.get("price_amount") or 0)
         if not price:
             return None
         ship, note, exact = shop_shipping(name, price)
-        cover = (p.get("cover") or {}).get("large") or {}
+        cover = (product.get("cover") or {}).get("large") or {}
         return Offer(
-            source=name, source_name=label, id=str(p.get("id_product")), title=p.get("name", ""),
-            url=p.get("url") or p.get("canonical_url") or "", price=price, condition="new",
+            source=name, source_name=label, id=str(product.get("id_product")), title=product.get("name", ""),
+            url=product.get("url") or product.get("canonical_url") or "", price=price, condition="new",
             image=cover.get("url", ""), shipping=ship, shipping_note=note, shipping_exact=exact,
-            extra={"category": p.get("category_name") or ""},
+            category=product.get("category_name") or "",
         )
 
     async def search(query: str) -> list[Offer]:
-        async with session() as s:
+        async with session() as client:
             async def page(n: int) -> dict:
                 url = url_template.format(q=quote_plus(query)) + f"&resultsPerPage={PAGE_SIZE}&page={n}"
-                r = await s.get(url, headers=AJAX_HEADERS)
-                r.raise_for_status()
-                return r.json()
+                response = await client.get(url, headers=AJAX_HEADERS)
+                response.raise_for_status()
+                return response.json()
 
             first = await page(1)  # trgovina sama kaže koliko ima stranica
             pages_count = min(int((first.get("pagination") or {}).get("pages_count") or 1), MAX_PAGES)

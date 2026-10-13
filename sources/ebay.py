@@ -34,15 +34,15 @@ def _api_keys() -> tuple[str, str]:
     return db.get_setting("ebay_client_id"), db.get_setting("ebay_client_secret")
 
 
-async def _api_token(s, client_id: str, secret: str) -> str:
+async def _api_token(client, client_id: str, secret: str) -> str:
     if _token["value"] and time.time() < _token["expires"] - 60:
         return _token["value"]
     basic = base64.b64encode(f"{client_id}:{secret}".encode()).decode()
-    r = await s.post(API + "/identity/v1/oauth2/token",
+    response = await client.post(API + "/identity/v1/oauth2/token",
                      headers={"Authorization": f"Basic {basic}", "Content-Type": "application/x-www-form-urlencoded"},
                      data="grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope")
-    r.raise_for_status()
-    j = r.json()
+    response.raise_for_status()
+    j = response.json()
     _token.update(value=j["access_token"], expires=time.time() + j.get("expires_in", 7200))
     return _token["value"]
 
@@ -64,13 +64,13 @@ def _api_offer(item: dict) -> Offer | None:
 
 
 async def _search_api(query: str, client_id: str, secret: str) -> list[Offer]:
-    async with session() as s:
-        token = await _api_token(s, client_id, secret)
-        r = await s.get(API + "/buy/browse/v1/item_summary/search",
+    async with session() as client:
+        token = await _api_token(client, client_id, secret)
+        response = await client.get(API + "/buy/browse/v1/item_summary/search",
                         params={"q": query, "limit": 100, "filter": "deliveryCountry:HR"},
                         headers={**API_HEADERS, "Authorization": f"Bearer {token}"})
-        r.raise_for_status()
-        return [o for o in map(_api_offer, r.json().get("itemSummaries", [])) if o]
+        response.raise_for_status()
+        return [o for o in map(_api_offer, response.json().get("itemSummaries", [])) if o]
 
 
 # ===================== 2) scraping (rezerva) =====================
@@ -128,12 +128,12 @@ async def _search_scrape(query: str) -> list[Offer]:
     last_error = ""
     for _ in FINGERPRINTS:
         fp = FINGERPRINTS[_next_fp % len(FINGERPRINTS)]
-        async with session(fp) as s:
-            r = await s.get(url)
-        html = text(r)
-        if r.status_code == 200 and "s-card" in html:
+        async with session(fp) as client:
+            response = await client.get(url)
+        html = text(response)
+        if response.status_code == 200 and "s-card" in html:
             return parse(html)
-        last_error = f"HTTP {r.status_code}"
+        last_error = f"HTTP {response.status_code}"
         _next_fp += 1
     raise RuntimeError(f"eBay blokira scraping ({last_error}) - upiši eBay API ključ u Postavkama")
 

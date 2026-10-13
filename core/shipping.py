@@ -74,9 +74,9 @@ async def to_eur(amount: float, currency: str) -> float:
     fetched_at, rate = _fx.get(currency, (0.0, 1.0))
     if time.time() - fetched_at > FX_TTL:
         try:
-            async with session() as s:
-                r = await s.get("https://api.frankfurter.app/latest", params={"from": currency, "to": "EUR"})
-                rate = float(r.json()["rates"]["EUR"])
+            async with session() as client:
+                response = await client.get("https://api.frankfurter.app/latest", params={"from": currency, "to": "EUR"})
+                rate = float(response.json()["rates"]["EUR"])
                 _fx[currency] = (time.time(), rate)
         except Exception:
             pass  # zadrži zadnji poznati tečaj

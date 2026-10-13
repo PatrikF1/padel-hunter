@@ -58,34 +58,34 @@ class ShopifyShop:
     async def search(self, query: str) -> list[Offer]:
         """Spaja dva izvora: brzi prijedlog (do 10, sa slikama i zalihom) i SVE stranice pretrage
         (proizvodi iz ShopifyAnalytics podataka na stranici). Rasprodano otkrije košarica u enrich()."""
-        async with session() as s:
-            suggest, pages = await asyncio.gather(self._suggest(s, query), self._search_pages(s, query))
+        async with session() as client:
+            suggest, pages = await asyncio.gather(self._suggest(client, query), self._search_pages(client, query))
         by_handle = {o.id: o for o in pages}
         by_handle.update({o.id: o for o in suggest})  # prijedlog ima bolje podatke (slika, zaliha)
         return list(by_handle.values())
 
-    async def _suggest(self, s, query: str) -> list[Offer]:
-        r = await s.get(self.base + "/search/suggest.json",
+    async def _suggest(self, client, query: str) -> list[Offer]:
+        response = await client.get(self.base + "/search/suggest.json",
                         params={"q": query, "resources[type]": "product", "resources[limit]": "10"})
-        r.raise_for_status()
-        products = r.json()["resources"]["results"].get("products", [])
-        return [self._suggest_offer(p) for p in products if p.get("available", True)]
+        response.raise_for_status()
+        products = response.json()["resources"]["results"].get("products", [])
+        return [self._suggest_offer(product) for product in products if product.get("available", True)]
 
-    def _suggest_offer(self, p: dict) -> Offer:
-        path = p["url"].split("?")[0]
-        img = p.get("image") or (p.get("featured_image") or {}).get("url") or ""
+    def _suggest_offer(self, product: dict) -> Offer:
+        path = product["url"].split("?")[0]
+        img = product.get("image") or (product.get("featured_image") or {}).get("url") or ""
         return Offer(
-            source=self.name, source_name=self.label, id=path.rsplit("/", 1)[-1], title=p["title"],
-            url=self.base + path, price=float(p.get("price") or p.get("price_min") or 0), condition="new",
+            source=self.name, source_name=self.label, id=path.rsplit("/", 1)[-1], title=product["title"],
+            url=self.base + path, price=float(product.get("price") or product.get("price_min") or 0), condition="new",
             image="https:" + img if img.startswith("//") else img,
-            extra={"category": p.get("type") or ""},
+            category=product.get("type") or "",
         )
 
-    async def _search_pages(self, s, query: str) -> list[Offer]:
+    async def _search_pages(self, client, query: str) -> list[Offer]:
         async def page(n: int) -> str:
-            r = await s.get(self.base + "/search", params={"q": query, "type": "product", "page": n})
-            r.raise_for_status()
-            return text(r)
+            response = await client.get(self.base + "/search", params={"q": query, "type": "product", "page": n})
+            response.raise_for_status()
+            return text(response)
 
         try:
             first = await page(1)
@@ -104,18 +104,18 @@ class ShopifyShop:
         if not meta:
             return []
         offers = []
-        for p in json.loads(meta.group(1)).get("products", []):
-            variant = (p.get("variants") or [{}])[0]
+        for product in json.loads(meta.group(1)).get("products", []):
+            variant = (product.get("variants") or [{}])[0]
             title = variant.get("name", "")
             if variant.get("public_title") and title.endswith(" - " + variant["public_title"]):
                 title = title[: -len(variant["public_title"]) - 3]
-            if not p.get("handle") or not variant.get("price") or not title:
+            if not product.get("handle") or not variant.get("price") or not title:
                 continue
             price = await to_eur(variant["price"] / 100, currency.group(1) if currency else "EUR")
             offers.append(Offer(
-                source=self.name, source_name=self.label, id=p["handle"], title=title,
-                url=f"{self.base}/products/{p['handle']}", price=price, condition="new",
-                extra={"category": p.get("type") or ""},
+                source=self.name, source_name=self.label, id=product["handle"], title=title,
+                url=f"{self.base}/products/{product['handle']}", price=price, condition="new",
+                category=product.get("type") or "",
             ))
         return offers
 
@@ -123,20 +123,20 @@ class ShopifyShop:
         cached = _quotes.get(url)
         if cached and time.time() - cached.at < SHIPPING_TTL:
             return cached
-        async with session() as s:  # nova sesija = prazna košarica
-            product = (await s.get(url + ".js")).json()
+        async with session() as client:  # nova sesija = prazna košarica
+            product = (await client.get(url + ".js")).json()
             variant = next((v for v in product["variants"] if v.get("available")), product["variants"][0])
             image = product.get("featured_image") or ""
             image = "https:" + image if image.startswith("//") else image
-            added = await s.post(self.base + "/cart/add.js", json={"items": [{"id": variant["id"], "quantity": 1}]})
+            added = await client.post(self.base + "/cart/add.js", json={"items": [{"id": variant["id"], "quantity": 1}]})
             if added.status_code != 200:  # npr. 422 "rasprodano" iako ga tražilica još prikazuje
                 quote = _Quote(time.time(), 0.0, None, "", sold_out=True)
                 _quotes[url] = quote
                 return quote
-            cart = (await s.get(self.base + "/cart.js")).json()
+            cart = (await client.get(self.base + "/cart.js")).json()
             currency = cart.get("currency", "EUR")
             price = await to_eur(cart["items"][0]["final_line_price"] / 100, currency)
-            rates = (await s.get(self.base + "/cart/shipping_rates.json", params=HR_ADDRESS)).json()
+            rates = (await client.get(self.base + "/cart/shipping_rates.json", params=HR_ADDRESS)).json()
         rates = rates.get("shipping_rates", [])
         if rates:
             best = min(rates, key=lambda r: float(r["price"]))

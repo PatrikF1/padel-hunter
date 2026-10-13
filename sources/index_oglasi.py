@@ -13,12 +13,12 @@ BASE = "https://www.index.hr/oglasi"
 _url_slugs: dict[tuple[str, str], tuple[str, str]] = {}  # (module, category) -> ("sport", "tenis")
 
 
-async def _load_url_slugs(s) -> None:
+async def _load_url_slugs(client) -> None:
     """URL oglasa koristi hrvatske nazive modula/kategorije - mapiranje čitamo iz njihove konfiguracije."""
     if _url_slugs:
         return
-    modules = (await s.get(BASE + "/api/configuration/module")).json()
-    categories = (await s.get(BASE + "/api/configuration/category")).json()
+    modules = (await client.get(BASE + "/api/configuration/module")).json()
+    categories = (await client.get(BASE + "/api/configuration/category")).json()
     module_hr = {m["name"]: m["nameHr"] for m in modules}
     for c in categories:
         _url_slugs[(c["module"], c["name"])] = (module_hr.get(c["module"], c.get("moduleHr", "")), c["nameHr"])
@@ -45,26 +45,26 @@ def parse(data: dict) -> list[Offer]:
 
 
 async def details(offer: Offer) -> str:
-    async with session() as s:
-        await s.get(BASE)  # kolačić potreban za API
-        r = await s.get(BASE + "/api/aditem/single-ad", params={"code": offer.id},
+    async with session() as client:
+        await client.get(BASE)  # kolačić potreban za API
+        response = await client.get(BASE + "/api/aditem/single-ad", params={"code": offer.id},
                         headers={"accept": "application/json"})
-        r.raise_for_status()
-        ads = r.json().get("data") or [{}]
+        response.raise_for_status()
+        ads = response.json().get("data") or [{}]
     return ads[0].get("description") or ""
 
 
 async def search(query: str) -> list[Offer]:
-    async with session() as s:
-        await s.get(BASE)
-        await _load_url_slugs(s)
+    async with session() as client:
+        await client.get(BASE)
+        await _load_url_slugs(client)
 
         async def page(n: int) -> list[Offer]:
-            r = await s.get(BASE + "/api/aditem", params={"text": query, "sortOption": 4, "itemPerPage": PAGE_SIZE,
+            response = await client.get(BASE + "/api/aditem", params={"text": query, "sortOption": 4, "itemPerPage": PAGE_SIZE,
                                                           "page": n},
                             headers={"accept": "application/json", "referer": BASE + "/pretraga"})
-            r.raise_for_status()
-            return parse(r.json())
+            response.raise_for_status()
+            return parse(response.json())
 
         return await fetch_pages(page, full_page=PAGE_SIZE)
 

@@ -38,7 +38,6 @@ def parse(html: str) -> list[Offer]:
             image=_attr(li, "img", "src"),
             shipping=ship, shipping_note=note, shipping_exact=exact,
             location=_text(li, ".locationText"), posted=_attr(li, "time", "datetime"),
-            extra={"trgovac": li.css_first(".feature.residentialSeller") is None},
         ))
     return offers
 
@@ -54,10 +53,10 @@ def parse_details(html: str) -> tuple[str, str]:
 
 
 async def details(offer: Offer) -> str:
-    async with session() as s:
-        r = await s.get(offer.url)
-        r.raise_for_status()
-    description, condition = parse_details(text(r))
+    async with session() as client:
+        response = await client.get(offer.url)
+        response.raise_for_status()
+    description, condition = parse_details(text(response))
     if condition:
         offer.condition = "new" if condition.startswith("nov") else "used"
     return description
@@ -67,11 +66,11 @@ PAGE_SIZE = 20  # Njuškalo prikazuje ~25 oglasa po stranici (+ izdvojene)
 
 
 async def search(query: str) -> list[Offer]:
-    async with session() as s:
+    async with session() as client:
         async def page(n: int) -> list[Offer]:
-            r = await s.get(BASE + "/search/", params={"keywords": query, "sort": "new", "page": n})
-            r.raise_for_status()
-            return parse(text(r))
+            response = await client.get(BASE + "/search/", params={"keywords": query, "sort": "new", "page": n})
+            response.raise_for_status()
+            return parse(text(response))
 
         return await fetch_pages(page, full_page=PAGE_SIZE)
 
