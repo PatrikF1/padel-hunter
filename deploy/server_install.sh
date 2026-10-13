@@ -7,6 +7,12 @@ APP_DIR="$HOME/padel-hunter"
 SERVICE=padel-hunter
 cd "$APP_DIR"
 
+echo "==> 0/4 Swap (rezervna memorija na disku) - besplatni AMD server ima samo 1 GB RAM-a"
+if [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 2000 ] && ! swapon --show | grep -q /swapfile; then
+  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap -q /swapfile && sudo swapon /swapfile
+  grep -q /swapfile /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+
 echo "==> 1/4 Sistemski paketi (Python)"
 sudo apt-get update -qq
 sudo apt-get install -y -qq python3-venv python3-pip curl >/dev/null
